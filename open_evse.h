@@ -71,7 +71,7 @@
 // #define VOLTMETER_SCALE_FACTOR (266)     // original guess
 #define DEFAULT_VOLT_SCALE_FACTOR (262)        // calibrated for Craig K OpenEVSE II build
 // #define VOLTMETER_OFFSET_FACTOR (40000)  // original guess
-#define VOLT_OFFSET (46800)     // calibrated for Craig K OpenEVSE II build
+#define DEFAULT_VOLT_OFFSET (46800)     // calibrated for Craig K OpenEVSE II build
 #endif // OPENEVSE_2
 
 // GFI support
@@ -963,6 +963,7 @@ class J1772EVSEController {
 #ifdef VOLTMETER
   uint16_t m_VoltOffset;
   uint16_t m_VoltScaleFactor;
+  uint32_t readVoltmeter();
 #endif // VOLTMETER
 
 public:
@@ -1036,9 +1037,6 @@ public:
   uint8_t AutoSvcLvlSkipped() { return m_bVFlags & ECVF_AUTOSVCLVL_SKIPPED; }
 
 
-  #ifdef OPENEVSE_2      
-  uint32_t readVoltmeter();
-  #endif
   uint8_t ReadACPins();
 #endif // ADVPWR
 
@@ -1071,6 +1069,7 @@ public:
 
 #ifdef VOLTMETER
   void SetVoltmeter(uint16_t scale,uint16_t offset);
+  uint32_t ReadVoltmeter();
 #endif // VOLTMETER
 #ifdef AMMETER
   int32_t GetChargingCurrent() { return m_ChargingCurrent; }
