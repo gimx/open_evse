@@ -963,7 +963,6 @@ class J1772EVSEController {
 #ifdef VOLTMETER
   uint16_t m_VoltOffset;
   uint16_t m_VoltScaleFactor;
-  uint32_t readVoltmeter();
 #endif // VOLTMETER
 
 public:
@@ -1068,6 +1067,8 @@ public:
 #endif // RGBLCD
 
 #ifdef VOLTMETER
+  uint16_t GetVoltScaleFactor() { return m_VoltScaleFactor; }
+  uint16_t GetVoltOffset() { return m_VoltOffset; }
   void SetVoltmeter(uint16_t scale,uint16_t offset);
   uint32_t ReadVoltmeter();
 #endif // VOLTMETER
