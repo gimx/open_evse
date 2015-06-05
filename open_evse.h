@@ -36,7 +36,7 @@
 #include "WProgram.h" // shouldn't need this but arduino sometimes messes up and puts inside an #ifdef
 #endif // ARDUINO
 
-#define VERSION "D3.9.0"
+#define VERSION "3.9.0"
 
 //-- begin features
 
@@ -268,8 +268,6 @@
 //
 
 //-- begin configuration
-
-#define I2C_FREQ 100000UL // Hz
 
 // WARNING: ALL DELAYS *MUST* BE SHORTER THAN THIS TIMER OR WE WILL GET INTO
 // AN INFINITE RESET LOOP
