@@ -4,7 +4,7 @@
 CLI g_CLI;
 
 const char g_psEnabled[] PROGMEM = "enabled";
-const char g_psDisabled[] PROGMEM = "disabled";
+//const char g_psDisabled[] PROGMEM = "disabled";
 
 CLI::CLI()
 {
@@ -80,7 +80,7 @@ void CLI::getInput()
         print_P(PSTR("Current capacity (Amps): "));
         Serial.println((int)g_EvseController.GetCurrentCapacity()); 
         print_P(PSTR("Min Current Capacity: "));
-        Serial.println(MIN_CURRENT_CAPACITY);
+        Serial.println(MIN_CURRENT_CAPACITY_L2);
         print_P(PSTR("Max Current Capacity: "));
         Serial.println((g_EvseController.GetCurSvcLevel() == 2) ? MAX_CURRENT_CAPACITY_L2 : MAX_CURRENT_CAPACITY_L1);
 	print_P(PSTR("Vent Required: "));
@@ -222,7 +222,7 @@ void CLI::getInput()
      println_P(PSTR("WARNING - Do not set higher than 80% of breaker value"));
      printlnn();
      print_P(PSTR("Enter amps ("));
-     Serial.print(MIN_CURRENT_CAPACITY);
+     Serial.print(MIN_CURRENT_CAPACITY_L2);
      print_P(PSTR("-"));
      Serial.print((g_EvseController.GetCurSvcLevel()  == 1) ? MAX_CURRENT_CAPACITY_L1 : MAX_CURRENT_CAPACITY_L2);
      print_P(PSTR("): "));

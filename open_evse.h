@@ -27,35 +27,27 @@
 #include <avr/pgmspace.h>
 #include <avr/eeprom.h>
 #include <pins_arduino.h>
-#include "./Wire.h"
+#include <Wire.h>
 #include "./Time.h"
 #include "avrstuff.h"
-#include "i2caddr.h"
-
 #if defined(ARDUINO) && (ARDUINO >= 100)
 #include "Arduino.h"
 #else
 #include "WProgram.h" // shouldn't need this but arduino sometimes messes up and puts inside an #ifdef
 #endif // ARDUINO
 
-#define VERSION "3.11.3"
+#define VERSION "3.10.4"
 
 //-- begin features
 
 // show disabled tests before POST
-#define SHOW_DISABLED_TESTS
+//#define SHOW_DISABLED_TESTS
 
 // current measurement
-#define AMMETER
+//#define AMMETER
 
 // serial remote api
 #define RAPI
-
-// RAPI over serial
-#define RAPI_SERIAL
-
-// RAPI over I2C
-//#define RAPI_I2C
 
 // serial port command line
 // For the RTC version, only CLI or LCD can be defined at one time. 
@@ -66,7 +58,7 @@
 #define WATCHDOG
 
 // charge for a specified amount of time and then stop
-#define TIME_LIMIT
+// #define TIME_LIMIT
 
 
 // Support for Nick Sayer's OpenEVSE II board, which has alternate hardware for ground check/stuck relay check and a voltmeter for L1/L2.
@@ -88,70 +80,70 @@
 #endif // OPENEVSE_2
 
 // GFI support
-#define GFI
+//#define GFI
 
 // If you loop a wire from the third GFI pin through the CT a few times and then to ground,
 // enable this. ADVPWR must also be defined.
-#define GFI_SELFTEST
+//#define GFI_SELFTEST
 
 // behavior specified by UL
 // 1) if enabled, POST failure will cause a hard fault until power cycled.
 //    disabled, will retry POST continuously until it passes
 // 2) if enabled, any a fault occurs immediately after charge is initiated, 
 //    hard fault until power cycled. Otherwise, do the standard delay/retry sequence
-#define UL_COMPLIANT
+//#define UL_COMPLIANT
 // if enabled, do GFI self test before closing relay
-#define UL_GFI_SELFTEST
+//#define UL_GFI_SELFTEST
 
 #ifdef UL_GFI_SELFTEST
 #define GFI_SELFTEST
 #endif //UL_GFI_SELFTEST
 
-#define TEMPERATURE_MONITORING  // Temperature monitoring support
+//#define TEMPERATURE_MONITORING  // Temperature monitoring support
 // not yet #define TEMPERATURE_MONITORING_NY
 
-#ifdef AMMETER
+
 // kWh Recording feature depends upon #AMMETER support
 // comment out KWH_RECORDING to have the elapsed time and time of day displayed on the second line of the LCD
 #define KWH_RECORDING
 #ifdef KWH_RECORDING
 // stop charging after a certain kWh reached
-#define CHARGE_LIMIT
+//#define CHARGE_LIMIT
 #endif // KWH_RECORDING
-#endif //AMMETER
+
 
 //Adafruit RGBLCD (MCP23017) - can have RGB or monochrome backlight
-#define RGBLCD
+//#define RGBLCD
 
 //select default LCD backlight mode. can be overridden w/CLI/RAPI
 #define BKL_TYPE_MONO 0
 #define BKL_TYPE_RGB  1
-#define DEFAULT_LCD_BKL_TYPE BKL_TYPE_RGB
-//#define DEFAULT_LCD_BKL_TYPE BKL_TYPE_MONO
+//#define DEFAULT_LCD_BKL_TYPE BKL_TYPE_RGB
+#define DEFAULT_LCD_BKL_TYPE BKL_TYPE_MONO
 
 // Adafruit LCD backpack in I2C mode (MCP23008)
-//#define I2CLCD
+#define I2CLCD
 // Support PCF8574* based I2C backpack using F. Malpartida's library
 // https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads
-//#define I2CLCD_PCF8574
+#define I2CLCD_PCF8574
 
 // Advanced Powersupply... Ground check, stuck relay, L1/L2 detection.
-#define ADVPWR
+//#define ADVPWR
 
 // valid only if ADVPWR defined - for rectified MID400 chips which block
 // half cycle (for ground check on both legs)
-#define SAMPLE_ACPINS
+//#define SAMPLE_ACPINS
 // single button menus (needs LCD enabled)
 // connect an SPST-NO button between BTN_PIN and GND or enable ADAFRUIT_BTN to use the 
 // select button of the Adafruit RGB LCD 
 // How to use 1-button menu
 // Long press activates menu
 // When within menus, short press cycles menu items, long press selects and exits current submenu
-#define BTN_MENU
+//#define BTN_MENU
 
 // When not in menus, short press instantly stops the EVSE - another short press resumes.  Long press activates menus
 // also allows menus to be manipulated even when in State B/C
-#define BTN_ENABLE_TOGGLE
+//#define BTN_ENABLE_TOGGLE
 
 #ifdef BTN_MENU
 // use Adafruit RGB LCD select button
@@ -162,7 +154,7 @@
 
 // Option for RTC and DelayTime
 // REQUIRES HARDWARE RTC: DS1307 or DS3231 connected via I2C
-#define RTC // enable RTC & timer functions
+//#define RTC // enable RTC & timer functions
 
 #ifdef RTC
 // Option for Delay Timer - GoldServe
@@ -175,16 +167,12 @@
 #endif // RTC
 
 // if defined, this pin goes HIGH when the EVSE is sleeping, and LOW otherwise
-//#define SLEEP_STATUS_REG &PINB
-//#define SLEEP_STATUS_IDX 4
+#define SLEEP_STATUS_REG &PINB
+#define SLEEP_STATUS_IDX 5
 
 
 // for stability testing - shorter timeout/higher retry count
 //#define GFI_TESTING
-
-// phase and frequency correct PWM 1/8000 resolution
-// when not defined, use fast PWM -> 1/250 resolution
-#define PAFC_PWM
 
 //-- end features
 
@@ -192,7 +180,7 @@
 #define DEFAULT_LCD_BKL_TYPE BKL_TYPE_MONO
 #endif
 
-#if defined(RGBLCD) || defined(I2CLCD)
+#if defined(RGBLCD) || defined(I2CLCD) || defined(I2CLCD)
 #define LCD16X2
 //If LCD is not defined, undef BTN_MENU - requires LCD
 #else
@@ -228,7 +216,7 @@
 //
 //
 // for debugging ONLY - turns off all safety checks
-//#define NOCHECKS
+#define NOCHECKS
 // DO NOT USE FT_xxx. FOR FUNCTIONAL TESTING ONLY
 //
 // Test for GFI fault lockout
@@ -275,7 +263,6 @@
 
 #define LCD_MAX_CHARS_PER_LINE 16
 
-
 #ifdef SERIALCLI
 #define TMP_BUF_SIZE 64
 #else
@@ -289,19 +276,19 @@
 
 // current capacity in amps
 #define DEFAULT_CURRENT_CAPACITY_L1 12
-#define DEFAULT_CURRENT_CAPACITY_L2 16
+#define DEFAULT_CURRENT_CAPACITY_L2 24
 
 // minimum allowable current in amps
 #define MIN_CURRENT_CAPACITY_L1 6
-#define MIN_CURRENT_CAPACITY_L2 10
+#define MIN_CURRENT_CAPACITY_L2 6
 
 // maximum allowable current in amps
 #define MAX_CURRENT_CAPACITY_L1 16 // J1772 Max for L1 on a 20A circuit
-#define MAX_CURRENT_CAPACITY_L2 80 // J1772 Max for L2
+#define MAX_CURRENT_CAPACITY_L2 30 // J1772 Max for L2
 
 //J1772EVSEController
-#define CURRENT_PIN 0 // analog current reading pin ADCx
-#define PILOT_PIN 1 // analog pilot voltage reading pin ADCx
+//#define CURRENT_PIN 0 // analog current reading pin ADCx
+#define VOLT_PIN 1 // analog pilot voltage reading pin ADCx
 #ifdef OPENEVSE_2
 #define VOLTMETER_PIN 2 // analog AC Line voltage voltemeter pin ADCx
 // This pin must match the last write to CHARGING_PIN, modulo a delay. If
@@ -315,21 +302,21 @@
 #define CHARGING_IDX 7 // OpenEVSE II has just one relay pin.
 #else // !OPENEVSE_2
  // TEST PIN 1 for L1/L2, ground and stuck relay
-#define ACLINE1_REG &PIND
-#define ACLINE1_IDX 3
+//#define ACLINE1_REG &PIND
+//#define ACLINE1_IDX 3
  // TEST PIN 2 for L1/L2, ground and stuck relay
-#define ACLINE2_REG &PIND
-#define ACLINE2_IDX 4
+//#define ACLINE2_REG &PIND
+//#define ACLINE2_IDX 4
 
 // digital Relay trigger pin
 #define CHARGING_REG &PINB
 #define CHARGING_IDX 0
 // digital Relay trigger pin for second relay
-#define CHARGING2_REG &PIND
-#define CHARGING2_IDX 7
+//#define CHARGING2_REG &PIND
+//#define CHARGING2_IDX 7
 //digital Charging pin for AC relay
-#define CHARGINGAC_REG &PINB
-#define CHARGINGAC_IDX 1
+//#define CHARGINGAC_REG &PINB
+//#define CHARGINGAC_IDX 1
 
 // obsolete LED pin
 //#define RED_LED_REG &PIND
@@ -339,10 +326,9 @@
 //#define GREEN_LED_IDX 5
 #endif // OPENEVSE_2
 
-// N.B. if PAFC_PWM is enabled, then pilot pin can be PB1 or PB2
-// if using fast PWM (PAFC_PWM disabled) pilot pin *MUST* be PB2
-#define PILOT_REG &PINB
-#define PILOT_IDX 2
+//#define PILOT_REG &PINB
+#define PILOT_PIN 3 //3,11
+#define MASTER_PILOT_PIN 2
 
 
 #define SERIAL_BAUD 115200
@@ -431,7 +417,7 @@
 // see http://blog.lincomatic.com/?p=956 for installation instructions
 #include "./Wire.h"
 #ifdef I2CLCD_PCF8574
-#include "./LiquidCrystal_I2C.h"
+#include "LiquidCrystal_I2C.h"
 #define LCD_I2C_ADDR 0x27
 #else
 #ifdef RGBLCD
@@ -761,7 +747,7 @@ public:
 #endif // GFI
 
 #ifdef TEMPERATURE_MONITORING
-#include "./MCP9808.h"  //  adding the ambient temp sensor to I2C
+#include "./Adafruit_MCP9808.h"  //  adding the ambient temp sensor to I2C
 #include "./Adafruit_TMP007.h"   //  adding the TMP007 IR I2C sensor
 
 #define TEMPMONITOR_UPDATE_INTERVAL 1000ul
@@ -774,7 +760,7 @@ class TempMonitor {
   unsigned long m_LastUpdate;
 public:
 #ifdef MCP9808_IS_ON_I2C
-  MCP9808 m_tempSensor;
+  Adafruit_MCP9808 m_tempSensor;
 #endif  //MCP9808_IS_ON_I2C
 #ifdef TMP007_IS_ON_I2C
   Adafruit_TMP007 m_tmp007;

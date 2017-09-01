@@ -35,4 +35,5 @@ public:
     return m_State; 
   }
   int SetPWM(int amps); // 12V 1KHz PWM
+  int SenseMaster(); 
 };

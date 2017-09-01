@@ -18,30 +18,76 @@
  */
 #include "open_evse.h"
 
+#define OSP_SET_WIDTH(cycles) (OCR2B = 0xff-(cycles-1))
+//#define OSP_SET_WIDTH(cycles) (OCR2A = 0xff-(cycles-1))
+
+// Setup the one-shot pulse generator and initialize with a pulse width that is (cycles) clock counts long
+void osp_setup(uint8_t cycles) {
+  TCCR2B =  0;      // Halt counter by setting clock select bits to 0 (No clock source).
+//  TCCR2A =  0;      // Halt counter by setting clock select bits to 0 (No clock source).
+                    // This keeps anyhting from happeneing while we get set up
+
+  TCNT2 = 0x00;     // Start counting at bottom. 
+  OCR2B = 0;      // Set TOP to 0. This effectively keeps us from counting becuase the counter just keeps reseting back to 0.
+          // We break out of this by manually setting the TCNT higher than 0, in which case it will count all the way up to MAX and then overflow back to 0 and get locked up again.
+  OSP_SET_WIDTH(cycles);    // This also makes new OCR values get loaded frm the buffer on every clock cycle. 
+
+  TCCR2A = _BV(COM2B0) | _BV(COM2B1) | _BV(WGM20) | _BV(WGM21); // OC2B=Set on Match, clear on BOTTOM. Mode 7 Fast PWM.
+  //TCCR2A = _BV(COM2A0) | _BV(COM2A1) | _BV(WGM20) | _BV(WGM21); // OC2B=Set on Match, clear on BOTTOM. Mode 7 Fast PWM.
+  TCCR2B = _BV(WGM22)| _BV(CS22);         // Start counting now. WGM22=1 to select Fast PWM mode 7
+}
+
+
+// Fire a one-shot pulse. Use the most recently set width. 
+#define OSP_FIRE() (TCNT2 = OCR2B - 1)
+//#define OSP_FIRE() (TCNT2 = OCR2A - 1)
+
+// Test there is currently a pulse still in progress
+#define OSP_INPROGRESS() (TCNT2>0)
+
+// Fire a one-shot pusle with the specififed width. 
+// Order of operations in calculating m must avoid overflow of the unint8_t.
+// TCNT2 starts one count lower than the match value becuase the chip will block any compare on the cycle after setting a TCNT. 
+#define OSP_SET_AND_FIRE(cycles) {uint8_t m=0xff-(cycles-1); OCR2B=m; TCNT2=m-1;}
+//#define OSP_SET_AND_FIRE(cycles) {uint8_t m=0xff-(cycles-1); OCR2A=m; TCNT2=m-1;}
+
 
 #define TOP ((F_CPU / 2000000) * 1000) // for 1KHz (=1000us period)
 
+volatile uint32_t t0=0,t1=0,t2=0, tLow, tHigh;
+volatile uint8_t cycles = 10, dutyCycleChanged=true;
+
+void onMasterPilotChange() {
+  int state = digitalRead(MASTER_PILOT_PIN);
+  
+  if (state == HIGH) { //rising 
+    if (dutyCycleChanged){ 
+      OSP_SET_AND_FIRE(cycles);
+      dutyCycleChanged = false;
+    }
+    else 
+      OSP_FIRE();
+  
+    t0=  micros();
+    tLow = t0-t1;
+  } 
+  else{//falling
+    t1 = micros();
+    tHigh = t1-t0;
+  }
+
+}
+
 void J1772Pilot::Init()
 {
-#ifdef PAFC_PWM
-  // set up Timer for phase & frequency correct PWM
-  TCCR1A = 0;  // set up Control Register A
-  ICR1 = TOP;
-  // WGM13 -> select P&F mode CS10 -> prescaler = 1
-  TCCR1B = _BV(WGM13) | _BV(CS10);
- 
-#if (PILOT_IDX == 1) // PB1
-  DDRB |= _BV(PORTB1);
-  TCCR1A |= _BV(COM1A1);
-#else // PB2
-  DDRB |= _BV(PORTB2);
-  TCCR1A |= _BV(COM1B1);
-#endif // PILOT_IDX
-#else // fast PWM
-  pin.init(PILOT_REG,PILOT_IDX,DigitalPin::OUT);
-#endif
-
-  SetState(PILOT_STATE_P12); // turns the pilot on 12V steady state
+  pinMode(MASTER_PILOT_PIN, INPUT);
+  
+  pinMode(PILOT_PIN, OUTPUT);
+  digitalWrite(PILOT_PIN, HIGH);
+    
+  //master pilot sensing
+  attachInterrupt(digitalPinToInterrupt(MASTER_PILOT_PIN), onMasterPilotChange, CHANGE); 
+  SenseMaster(); //TODO set sensed max amps
 }
 
 
@@ -50,28 +96,16 @@ void J1772Pilot::Init()
 // PILOT_STATE_N12 = steady -12V (EVSE_STATE_F - FAULT) 
 void J1772Pilot::SetState(PILOT_STATE state)
 {
-  AutoCriticalSection asc;
-
-#ifdef PAFC_PWM
+  
   if (state == PILOT_STATE_P12) {
-#if (PILOT_IDX == 1)
-    OCR1A = TOP;
-#else
-    OCR1B = TOP;
-#endif
+    TCCR2A &= ~(_BV(COM2B0)|_BV(COM2B1));
+//    digitalWrite(PILOT_PIN,HIGH);
   }
-  else {
-#if (PILOT_IDX == 1) // PB1
-    OCR1A = 0;
-#else // PB2
-    OCR1B = 0;
-#endif
+  else{
+    TCCR2A &= ~(_BV(COM2B0)|_BV(COM2B1));
+//    digitalWrite(PILOT_PIN,LOW);
   }
-#else // fast PWM
-  TCCR1A = 0; //disable pwm by turning off COM1A1,COM1A0,COM1B1,COM1B0
-  pin.write((state == PILOT_STATE_P12) ? 1 : 0);
-#endif // PAFC_PWM
-
+  
   m_State = state;
 }
 
@@ -83,32 +117,6 @@ void J1772Pilot::SetState(PILOT_STATE state)
 int J1772Pilot::SetPWM(int amps)
 {
 
-#ifdef PAFC_PWM
-  // duty cycle = OCR1A(B) / ICR1 * 100 %
-
-  unsigned cnt;
-  if ((amps >= 6) && (amps <= 51)) {
-    // amps = (duty cycle %) X 0.6
-    cnt = amps * (TOP/60);
-  } else if ((amps > 51) && (amps <= 80)) {
-    // amps = (duty cycle % - 64) X 2.5
-    cnt = (amps * (TOP/250)) + (64*(TOP/100));
-  }
-  else {
-    return 1;
-  }
-
-
-#if (PILOT_IDX == 1) // PB1
-  OCR1A = cnt;
-#else // PB2
-  OCR1B = cnt;
-#endif
-  
-  m_State = PILOT_STATE_PWM;
-
-  return 0;
-#else // fast PWM
   uint8_t ocr1b = 0;
   if ((amps >= 6) && (amps <= 51)) {
     ocr1b = 25 * amps / 6 - 1;  // J1772 states "Available current = (duty cycle %) X 0.6"
@@ -118,22 +126,17 @@ int J1772Pilot::SetPWM(int amps)
   else {
     return 1; // error
   }
-
+#ifdef SERDBG
+  Serial.print(ocr1b);Serial.print("cycles. amps:");Serial.println(amps);
+#endif  
   if (ocr1b) {
     AutoCriticalSection asc;
-    // Timer1 initialization:
-    // 16MHz / 64 / (OCR1A+1) / 2 on digital 9
-    // 16MHz / 64 / (OCR1A+1) on digital 10
-    // 1KHz variable duty cycle on digital 10, 500Hz fixed 50% on digital 9
-    // pin 10 duty cycle = (OCR1B+1)/(OCR1A+1)
-
-    TCCR1A = _BV(COM1A0) | _BV(COM1B1) | _BV(WGM11) | _BV(WGM10);
-    TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS11) | _BV(CS10);
-    OCR1A = 249;
-
+    
     // 10% = 24 , 96% = 239
-    OCR1B = ocr1b;
-
+    cycles = ocr1b;
+    osp_setup(cycles); 
+    dutyCycleChanged = true;
+    
     m_State = PILOT_STATE_PWM;
     return 0;
   }
@@ -141,5 +144,40 @@ int J1772Pilot::SetPWM(int amps)
     // invalid amps
     return 1;
   }
-#endif // PAFC_PWM
 }
+
+
+//returns amps and state of incoming master PWM signal as defined by 
+int J1772Pilot::SenseMaster()
+{
+  uint32_t tPeriod = tLow+tHigh;
+  uint16_t duty = (uint16_t)((double)tHigh*100/tPeriod);
+  uint16_t amps = 0;
+  
+  if(tPeriod<950 || tPeriod>1050){
+    //check if the master PWM signal is standard compliant (within measurement tolerances of the Arduino)
+  #ifdef SERDBG
+    Serial.print("Pilot PWM outside of 5% tolerance of 1kHz."); Serial.println(tPeriod);
+  #endif
+    return -1;
+  } 
+  if (duty <=5){
+  #ifdef SERDBG
+    Serial.println("Digital communication request sensed on master.");
+  #endif
+    return -2;
+  }
+  if (duty <= 85){
+       amps = (uint16_t)(duty*0.6);
+  }
+  else{
+     amps = (uint16_t)((duty-64)*2.5);
+  }
+  #ifdef SERDBG
+    Serial.print(tHigh);Serial.print(", ");Serial.print(tLow);Serial.println(", ");
+    Serial.print(duty);Serial.print(", ");Serial.print(amps);Serial.println(", ");
+  #endif //#ifdef SERDBG
+  return amps;  
+}
+
+
