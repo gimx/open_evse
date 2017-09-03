@@ -1296,6 +1296,9 @@ int J1772EVSEController::SetCurrentCapacity(uint8_t amps,uint8_t updatelcd,uint8
     m_Pilot.SetPWM(m_CurrentCapacity);
   }
 
+  if (updatelcd) {
+    g_OBD.Update(OBD_UPD_FORCE);
+  }
   return rc;
 }
 
