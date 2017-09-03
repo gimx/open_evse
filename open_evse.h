@@ -105,7 +105,7 @@
 
 // kWh Recording feature depends upon #AMMETER support
 // comment out KWH_RECORDING to have the elapsed time and time of day displayed on the second line of the LCD
-#define KWH_RECORDING
+//#define KWH_RECORDING
 #ifdef KWH_RECORDING
 // stop charging after a certain kWh reached
 //#define CHARGE_LIMIT
@@ -801,7 +801,7 @@ public:
 };
 #endif // TEMPERATURE_MONITORING
 
-#include "J1772Pilot.h"
+#include "J1772SlavePilot.h"
 #include "J1772EvseController.h"
 
 #ifdef BTN_MENU

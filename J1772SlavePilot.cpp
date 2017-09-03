@@ -18,6 +18,8 @@
  */
 #include "open_evse.h"
 
+
+// one shot pulse generator from https://wp.josh.com/2015/03/05/the-perfect-pulse-some-tricks-for-generating-precise-one-shots-on-avr8/
 #define OSP_SET_WIDTH(cycles) (OCR2B = 0xff-(cycles-1))
 //#define OSP_SET_WIDTH(cycles) (OCR2A = 0xff-(cycles-1))
 
@@ -53,7 +55,6 @@ void osp_setup(uint8_t cycles) {
 
 
 #define TOP ((F_CPU / 2000000) * 1000) // for 1KHz (=1000us period)
-
 volatile uint32_t t0=0,t1=0,t2=0, tLow, tHigh;
 volatile uint8_t cycles = 10, dutyCycleChanged=true;
 
@@ -78,7 +79,7 @@ void onMasterPilotChange() {
 
 }
 
-void J1772Pilot::Init()
+void J1772SlavePilot::Init()
 {
   pinMode(MASTER_PILOT_PIN, INPUT);
   
@@ -92,9 +93,13 @@ void J1772Pilot::Init()
 
 
 // no PWM pilot signal - steady state
-// PILOT_STATE_P12 = steady +12V (EVSE_STATE_A - VEHICLE NOT CONNECTED)
-// PILOT_STATE_N12 = steady -12V (EVSE_STATE_F - FAULT) 
-void J1772Pilot::SetState(PILOT_STATE state)
+// PILOT has to be externally NORed with MASTER pilot signal
+// two diodes with cathode to signal sources, i.e. MASTER PILOT and PILOT pins, joined anodes and pull-up
+// this will ensure that 
+// 1. duty cycle stays below MASTER regardless of commanding,
+// 2. MASTER failure overwrites any PWM or positive output on pilot
+// here we just disable off  PWM
+void J1772SlavePilot::SetState(PILOT_STATE state)
 {
   
   if (state == PILOT_STATE_P12) {
@@ -114,7 +119,7 @@ void J1772Pilot::SetState(PILOT_STATE state)
 // duty cycle 
 // outputting a 1KHz square wave to digital pin 10 via Timer 1
 //
-int J1772Pilot::SetPWM(int amps)
+int J1772SlavePilot::SetPWM(int amps)
 {
 
   uint8_t ocr1b = 0;
@@ -147,8 +152,8 @@ int J1772Pilot::SetPWM(int amps)
 }
 
 
-//returns amps and state of incoming master PWM signal as defined by 
-int J1772Pilot::SenseMaster()
+//returns amps and state of incoming master PWM signal 
+int J1772SlavePilot::SenseMaster()
 {
   uint32_t tPeriod = tLow+tHigh;
   uint16_t duty = (uint16_t)((double)tHigh*100/tPeriod);

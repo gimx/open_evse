@@ -82,7 +82,7 @@ typedef struct calibdata {
 #define ECVF_DEFAULT            0x00
 
 class J1772EVSEController {
-  J1772Pilot m_Pilot;
+  J1772SlavePilot m_Pilot;
 #ifdef GFI
   Gfi m_Gfi;
   unsigned long m_GfiFaultStartMs;

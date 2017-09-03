@@ -21,13 +21,13 @@
 typedef enum {
   PILOT_STATE_P12,PILOT_STATE_PWM,PILOT_STATE_N12} 
 PILOT_STATE;
-class J1772Pilot {
+class J1772SlavePilot {
   PILOT_STATE m_State;
 #ifndef PAFC_PWM
   DigitalPin pin;
 #endif // !PAFC_PWM
 public:
-  J1772Pilot() {
+  J1772SlavePilot() {
   }
   void Init();
   void SetState(PILOT_STATE pstate); // P12/N12
