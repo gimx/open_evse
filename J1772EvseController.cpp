@@ -140,7 +140,7 @@ uint32_t MovingAverage(uint32_t samp)
 #endif // AMMETER
 
 J1772EVSEController::J1772EVSEController() :
-  adcPilot(PILOT_PIN)
+  adcPilot(VOLT_PIN)
 #ifdef CURRENT_PIN
   , adcCurrent(CURRENT_PIN)
 #endif
@@ -191,9 +191,7 @@ void J1772EVSEController::Reboot()
 void J1772EVSEController::DisabledTest_P(PGM_P message)
 {
   g_OBD.LcdMsg_P(g_psDisabledTests, message);
-#ifndef NOCHECKS
   delay(SHOW_DISABLED_DELAY);
-#endif
 }
 
 void J1772EVSEController::ShowDisabledTests()
@@ -273,8 +271,7 @@ void J1772EVSEController::chargingOff()
 void J1772EVSEController::HardFault()
 {
   SetHardFault();
-  g_OBD.Update(OBD_UPD_HARDFAULT);
-  RapiSendEvseState();
+ 
   while (1) {
     ProcessInputs(); // spin forever or until user resets via menu
     // if we're in P12 state, we can recover from the hard fault when EV
@@ -426,13 +423,13 @@ int J1772EVSEController::SetBacklightType(uint8_t t,uint8_t update)
 #endif // RGBLCD
 void J1772EVSEController::Enable()
 {
+  #ifdef SLEEP_STATUS_REG
+      pinSleepStatus.write(1);
+  #endif // SLEEP_STATUS_REG
+  
   if ((m_EvseState == EVSE_STATE_DISABLED)||
       (m_EvseState == EVSE_STATE_SLEEPING)) {
-#ifdef SLEEP_STATUS_REG
-    if (m_EvseState == EVSE_STATE_SLEEPING) {
-      pinSleepStatus.write(0);
-    }
-#endif // SLEEP_STATUS_REG
+
 #if defined(TIME_LIMIT) || defined(CHARGE_LIMIT)
 	SetLimitSleep(0);
 #endif //defined(TIME_LIMIT) || defined(CHARGE_LIMIT)
@@ -445,14 +442,19 @@ void J1772EVSEController::Enable()
 
 void J1772EVSEController::Disable()
 {
-  if (m_EvseState != EVSE_STATE_DISABLED) { 
+  if (m_EvseState != EVSE_STATE_DISABLED) {
+    #ifdef SLEEP_STATUS_REG
+    
+      pinSleepStatus.write(0);
+    
+#endif // SLEEP_STATUS_REG 
     m_Pilot.SetState(PILOT_STATE_N12);
     m_EvseState = EVSE_STATE_DISABLED;
     // panic stop so we won't wait for EV to open its contacts first
     chargingOff();
     g_OBD.Update(OBD_UPD_FORCE);
 #ifdef RAPI
-    RapiSendEvseState();
+    g_ERP.sendEvseState();
 #endif // RAPI
   }
 }
@@ -470,12 +472,12 @@ void J1772EVSEController::Sleep()
     m_Pilot.SetState(PILOT_STATE_P12);
     m_EvseState = EVSE_STATE_SLEEPING;
 #ifdef SLEEP_STATUS_REG
-    pinSleepStatus.write(1);
+    pinSleepStatus.write(0);
 #endif // SLEEP_STATUS_REG
 
     g_OBD.Update(OBD_UPD_FORCE);
 #ifdef RAPI
-    RapiSendEvseState();
+    g_ERP.sendEvseState();
 #endif // RAPI
     // try to prevent arcing of our relay by waiting for EV to open its contacts first
     // use the charge end time variable temporarily to count down
@@ -716,7 +718,7 @@ uint8_t J1772EVSEController::doPost()
     } // endif test, no EV is plugged in
     else {
       // since we can't auto detect, for safety's sake, we must set to L1
-      svcState = L1;
+      svcState = L2;
       SetAutoSvcLvlSkipped(1);
       // EV connected.. do stuck relay check
       goto stuckrelaychk;
@@ -776,14 +778,9 @@ uint8_t J1772EVSEController::doPost()
 
 void J1772EVSEController::Init()
 {
-  m_EvseState = EVSE_STATE_UNKNOWN;
-  m_PrevEvseState = EVSE_STATE_UNKNOWN;
-
-  RapiSendEvseState(0);
-
   // read settings from EEPROM
   uint16_t rflgs = eeprom_read_word((uint16_t*)EOFS_FLAGS);
-
+  
 #ifdef RGBLCD
   if ((rflgs != 0xffff) && (rflgs & ECF_MONO_LCD)) {
     g_OBD.LcdSetBacklightType(BKL_TYPE_MONO);
@@ -805,6 +802,7 @@ void J1772EVSEController::Init()
 #endif
 #ifdef SLEEP_STATUS_REG
   pinSleepStatus.init(SLEEP_STATUS_REG,SLEEP_STATUS_IDX,DigitalPin::OUT);
+  pinSleepStatus.write(1);
 #endif
 
 #ifdef GFI
@@ -816,7 +814,7 @@ void J1772EVSEController::Init()
   m_Pilot.Init(); // init the pilot
 
   uint8_t svclvl = (uint8_t)DEFAULT_SERVICE_LEVEL;
-
+  
   if (rflgs == 0xffff) { // uninitialized EEPROM
     m_wFlags = ECF_DEFAULT;
 #ifdef RGBLCD
@@ -887,6 +885,10 @@ void J1772EVSEController::Init()
   m_NoGndStart = 0;
 #endif // ADVPWR
 
+  m_EvseState = EVSE_STATE_UNKNOWN;
+  m_PrevEvseState = EVSE_STATE_UNKNOWN;
+
+
 #ifdef ADVPWR
 
 #ifdef FT_READ_AC_PINS
@@ -915,7 +917,6 @@ void J1772EVSEController::Init()
     if (fault) {
 #ifdef UL_COMPLIANT
       // UL wants EVSE to hard fault until power cycle if POST fails
-      RapiSendEvseState();
       while (1) { // spin forever
 	  ProcessInputs();
       }
@@ -976,197 +977,15 @@ void J1772EVSEController::Update()
   uint16_t phigh = 0xffff;
 
   unsigned long curms = millis();
-
-  if (m_EvseState == EVSE_STATE_DISABLED) {
-    m_PrevEvseState = m_EvseState; // cancel state transition
-    return;
-  }
-  else if (m_EvseState == EVSE_STATE_SLEEPING) {
-    int8_t cancelTransition = 1;
-    if (chargingIsOn()) {
-      ReadPilot(&plow,&phigh);
-      // wait for pilot voltage to go > STATE C. This will happen if
-      // a) EV reacts and goes back to state B (opens its contacts)
-      // b) user pulls out the charge connector
-      // if it doesn't happen within 3 sec, we'll just open our relay anyway
-      if ((phigh >= m_ThreshData.m_ThreshBC)
-	  || ((curms - m_ChargeOffTimeMS) >= 3000)) {
-	chargingOff();
-#ifdef FT_SLEEP_DELAY
-	sprintf(g_sTmp,"SLEEP OPEN %d",(int)phigh);
-	g_OBD.LcdMsg(g_sTmp,(phigh >= m_ThreshData.m_ThreshBC) ? "THRESH" : "TIMEOUT");
-	delay(2000);
-#endif
-      }
-    }
-#if defined(TIME_LIMIT) || defined(CHARGE_LIMIT)
-    else if (LimitSleepIsSet()) {
-      ReadPilot(&plow,&phigh);
-      if (phigh >= m_ThreshData.m_ThreshAB) {
-	// if we went into sleep due to time/charge limit met, then
-	// automatically cancel the sleep when the car is unplugged
-	cancelTransition = 0;
-	SetLimitSleep(0);
-	m_EvseState = EVSE_STATE_UNKNOWN;
-      }
-    }
-#endif //defined(TIME_LIMIT) || defined(CHARGE_LIMIT)
-    if (cancelTransition) {
-      m_PrevEvseState = m_EvseState; // cancel state transition
-      return;
-    }
-  }
-
+  
   uint8_t prevevsestate = m_EvseState;
   uint8_t tmpevsestate = EVSE_STATE_UNKNOWN;
   uint8_t nofault = 1;
 
-#ifdef ADVPWR
-  uint8_t acpinstate = ReadACPins();
-  
-  if (chargingIsOn()) { // relay closed
-    if ((curms - m_ChargeOnTimeMS) > GROUND_CHK_DELAY) {
-      // ground check - can only test when relay closed
-      if (GndChkEnabled() && ((acpinstate & 3) == 3)) {
-	// bad ground
-	tmpevsestate = EVSE_STATE_NO_GROUND;
-	m_EvseState = EVSE_STATE_NO_GROUND;
-	
-	chargingOff(); // open the relay
-	if ((prevevsestate != EVSE_STATE_NO_GROUND) && (((uint8_t)(m_NoGndTripCnt+1)) < 254)) {
-	  m_NoGndTripCnt++;
-	  eeprom_write_byte((uint8_t*)EOFS_NOGND_TRIP_CNT,m_NoGndTripCnt);
-	}
-	m_NoGndStart = curms;
-	
-	nofault = 0;
-      }
-
-      // if EV was plugged in during POST, we couldn't do AutoSvcLevel detection,
-      // so we had to hardcode L1. During first charge session, we can probe and set to L2 if necessary
-      if (AutoSvcLvlSkipped() && (m_EvseState == EVSE_STATE_C)) {
-	if (!acpinstate) {
-	  // set to L2
-	  SetSvcLevel(2,1);
-	}
-	SetAutoSvcLvlSkipped(0);
-      }
-    }
-  }
-  else { // !chargingIsOn() - relay open
-    if (prevevsestate == EVSE_STATE_NO_GROUND) {
-      // check to see if EV disconnected
-      if (phigh == 0xffff) {
-	ReadPilot(&plow,&phigh);
-      }
-      if (phigh >= m_ThreshData.m_ThreshAB) {
-	// EV disconnected - cancel fault
-	m_EvseState = EVSE_STATE_UNKNOWN;
-	return;
-      }
-
-      if (((m_NoGndRetryCnt < GFI_RETRY_COUNT) || (GFI_RETRY_COUNT == 255)) &&
-	  ((curms - m_NoGndStart) > GFI_TIMEOUT)) {
-	m_NoGndRetryCnt++;
-      }
-      else {
-	tmpevsestate = EVSE_STATE_NO_GROUND;
-	m_EvseState = EVSE_STATE_NO_GROUND;
-	
-	nofault = 0;
-      }
-    }
-    else if (StuckRelayChkEnabled()) {    // stuck relay check - can test only when relay open
-      if (((acpinstate & 3) != 3)) { // Stuck Relay reading
-	if ((prevevsestate != EVSE_STATE_STUCK_RELAY) && !m_StuckRelayStartTimeMS) { //check for first occurence
-	  m_StuckRelayStartTimeMS = curms; // mark start state
-	}
-        if ( ( ((curms - m_ChargeOffTimeMS) > STUCK_RELAY_DELAY) && //  charge off de-bounce
-               ((curms - m_StuckRelayStartTimeMS) > STUCK_RELAY_DELAY) ) ||  // start delay de-bounce
-	     (prevevsestate == EVSE_STATE_STUCK_RELAY) ) { // already in error state
-	  // stuck relay
-	  if ((prevevsestate != EVSE_STATE_STUCK_RELAY) && (((uint8_t)(m_StuckRelayTripCnt+1)) < 254)) {
-	    m_StuckRelayTripCnt++;
-	    eeprom_write_byte((uint8_t*)EOFS_STUCK_RELAY_TRIP_CNT,m_StuckRelayTripCnt);
-	  }   
-	  tmpevsestate = EVSE_STATE_STUCK_RELAY;
-	  m_EvseState = EVSE_STATE_STUCK_RELAY;
-	  nofault = 0;
-	}
-      } // end of stuck relay reading
-      else m_StuckRelayStartTimeMS = 0; // not stuck - reset
-    } // end of StuckRelayChkEnabled
-  } // end of !chargingIsOn() - relay open
-#endif // ADVPWR
-   
-#ifdef GFI
-  if (m_Gfi.Fault()) {
-    tmpevsestate = EVSE_STATE_GFCI_FAULT;
-    m_EvseState = EVSE_STATE_GFCI_FAULT;
-
-    if (prevevsestate != EVSE_STATE_GFCI_FAULT) { // state transition
-      if (((uint8_t)(m_GfiTripCnt+1)) < 254) {
-	m_GfiTripCnt++;
-	eeprom_write_byte((uint8_t*)EOFS_GFI_TRIP_CNT,m_GfiTripCnt);
-      }
-      m_GfiRetryCnt = 0;
-      m_GfiFaultStartMs = curms;
-    }
-    else { // was already in GFI fault
-      // check to see if EV disconnected
-      ReadPilot(&plow,&phigh);
-      if (phigh >= m_ThreshData.m_ThreshAB) {
-	// EV disconnected - cancel fault
-	m_EvseState = EVSE_STATE_UNKNOWN;
-	m_Gfi.Reset();
-	return;
-      }
-
-      if ((curms - m_GfiFaultStartMs) >= GFI_TIMEOUT) {
-#ifdef FT_GFI_RETRY
-	g_OBD.LcdMsg("Reset","GFI");
-	delay(250);
-#endif // FT_GFI_RETRY
-	m_GfiRetryCnt++;
-	
-	if ((GFI_RETRY_COUNT != 255) && (m_GfiRetryCnt > GFI_RETRY_COUNT)) {
-	  HardFault();
-	  return;
-	}
-	else {
-	  m_Gfi.Reset();
-	  m_GfiFaultStartMs = 0;
-	}
-      }
-    }
-
-    nofault = 0;
-  }
-#endif // GFI
-
-
-#ifdef TEMPERATURE_MONITORING                 //  A state for OverTemp fault
-if (TempChkEnabled()) {
-  if ((g_TempMonitor.m_TMP007_temperature >= TEMPERATURE_INFRARED_PANIC)  || 
-      (g_TempMonitor.m_MCP9808_temperature >= TEMPERATURE_AMBIENT_PANIC)  ||
-      (g_TempMonitor.m_DS3231_temperature >= TEMPERATURE_AMBIENT_PANIC))  { 
-    tmpevsestate = EVSE_STATE_OVER_TEMPERATURE;
-    m_EvseState = EVSE_STATE_OVER_TEMPERATURE;
-    nofault = 0;
-  }
-}
-#endif // TEMPERATURE_MONITORING
-
   if (nofault) {
-    if ((prevevsestate >= EVSE_FAULT_STATE_BEGIN) &&
-	(prevevsestate <= EVSE_FAULT_STATE_END)) {
-      // just got out of fault state - pilot back on
-      m_Pilot.SetState(PILOT_STATE_P12);
-      prevevsestate = EVSE_STATE_UNKNOWN;
-      m_EvseState = EVSE_STATE_UNKNOWN;
-    }
-
+    
     ReadPilot(&plow,&phigh);
+    
 
     if (DiodeCheckEnabled() && (m_Pilot.GetState() == PILOT_STATE_PWM) && (plow >= m_ThreshData.m_ThreshDS)) {
       // diode check failed
@@ -1203,36 +1022,6 @@ if (TempChkEnabled()) {
       tmpevsestate = EVSE_STATE_UNKNOWN;
     }
 
-#ifdef FT_ENDURANCE
-    if (nofault) {
-      if (((tmpevsestate == EVSE_STATE_A)||(tmpevsestate == EVSE_STATE_B)) && (g_CycleCnt < 0)) {
-        g_CycleCnt = 0;
-        g_CycleHalfStart = curms;
-        g_CycleState = EVSE_STATE_B;
-      } 
-
-      if (g_CycleCnt >= 0) {
-        if (g_CycleState == EVSE_STATE_B) {
-	  if ((curms - g_CycleHalfStart) >= 9000) {
-	    g_CycleCnt++;
-	    g_CycleHalfStart = curms;
-	    tmpevsestate = EVSE_STATE_C;
-	    g_CycleState = EVSE_STATE_C;
-	  }
-	  else tmpevsestate = EVSE_STATE_B;
-        }
-        else if (g_CycleState == EVSE_STATE_C) {
-	  if ((curms - g_CycleHalfStart) >= 1000) {
-	    g_CycleHalfStart = curms;
-	    tmpevsestate = EVSE_STATE_B;
-	    g_CycleState = EVSE_STATE_B;
-	  }
-	  else tmpevsestate = EVSE_STATE_C;
-        }
-      }
-    }
-#endif // FT_ENDURANCE
-
     // debounce state transitions
     if (tmpevsestate != prevevsestate) {
       if (tmpevsestate != m_TmpEvseState) {
@@ -1245,21 +1034,6 @@ if (TempChkEnabled()) {
   } // nofault
 
   m_TmpEvseState = tmpevsestate;
-
-#ifdef FT_GFI_RETRY
-  if (nofault && (prevevsestate == EVSE_STATE_C) && 
-      ((curms - m_ChargeOnTimeMS) > 10000)) {
-    g_OBD.LcdMsg("Induce","Fault");
-    for(int i = 0; i < GFI_TEST_CYCLES; i++) {
-      m_Gfi.pinTest.write(1);
-      delayMicroseconds(GFI_PULSE_ON_US);
-      m_Gfi.pinTest.write(0);
-      delayMicroseconds(GFI_PULSE_OFF_US);
-      if (m_Gfi.Fault()) break;
-    }
-  }
-#endif // FT_GFI_RETRY
-
   
   // state transition
   if (m_EvseState != prevevsestate) {
@@ -1283,28 +1057,6 @@ if (TempChkEnabled()) {
     }
     else if (m_EvseState == EVSE_STATE_C) {
       m_Pilot.SetPWM(m_CurrentCapacity);
-#ifdef UL_GFI_SELFTEST
-      // test GFI before closing relay
-      if (GfiSelfTestEnabled() && m_Gfi.SelfTest()) {
-       // GFI test failed - hard fault
-        m_EvseState = EVSE_STATE_GFI_TEST_FAILED;
-	m_Pilot.SetState(PILOT_STATE_P12);
-	HardFault();
-	return;
-      }
-#endif // UL_GFI_SELFTEST
-
-#ifdef FT_GFI_LOCKOUT
-      for(int i = 0; i < GFI_TEST_CYCLES; i++) {
-	m_Gfi.pinTest.write(1);
-	delayMicroseconds(GFI_PULSE_ON_US);
-	m_Gfi.pinTest.write(0);
-	delayMicroseconds(GFI_PULSE_OFF_US);
-	if (m_Gfi.Fault()) break;
-      }
-      g_OBD.LcdMsg("Closing","Relay");
-      delay(150);
-#endif // FT_GFI_LOCKOUT
 
       chargingOn(); // turn on charging current
     }
@@ -1319,19 +1071,7 @@ if (TempChkEnabled()) {
       chargingOff(); // turn off charging current
       m_Pilot.SetState(PILOT_STATE_P12);
     }
-#ifdef TEMPERATURE_MONITORING
-    else if (m_EvseState == EVSE_STATE_OVER_TEMPERATURE) {
-      // vehicle state Over Teperature within the EVSE
-      m_Pilot.SetState(PILOT_STATE_P12); // Signal the EV to pause, high current should cease within five seconds
-      
-      while ((millis()-curms) < 5000) {
-	wdt_reset();
-      }
-      chargingOff(); // open the EVSE relays hopefully the EV has already disconnected by now by the J1772 specification
-      m_Pilot.SetState(PILOT_STATE_N12);  // This will tell the EV that the EVSE has major problems requiring disconnecting from the EV
-      HardFault();
-    }
-#endif //TEMPERATURE_MONITORING
+
     else if (m_EvseState == EVSE_STATE_DIODE_CHK_FAILED) {
       chargingOff(); // turn off charging current
       // must leave pilot on so we can keep checking
@@ -1362,7 +1102,7 @@ if (TempChkEnabled()) {
     }
 
 #ifdef RAPI
-    RapiSendEvseState();
+    g_ERP.sendEvseState();
 #endif // RAPI
 #ifdef SERDBG
     if (SerDbgEnabled()) {
@@ -1388,16 +1128,6 @@ if (TempChkEnabled()) {
         }
       #endif
   } // state transition
-
-#ifdef UL_COMPLIANT
-  if (!nofault && (prevevsestate == EVSE_STATE_C)) {
-    // if fault happens immediately (within 2 sec) after charging starts, hard fault
-    if ((curms - m_ChargeOnTimeMS) <= 2000) {
-      HardFault();
-      return;
-    }
-  }
-#endif // UL_COMPLIANT
 
   m_PrevEvseState = prevevsestate;
 
@@ -1569,13 +1299,12 @@ int J1772EVSEController::SetCurrentCapacity(uint8_t amps,uint8_t updatelcd,uint8
   if (updatelcd) {
     g_OBD.Update(OBD_UPD_FORCE);
   }
-
   return rc;
 }
 
 unsigned long J1772EVSEController::GetResetMs()
 {
-  return GFI_TIMEOUT - (millis() - ((m_EvseState == EVSE_STATE_GFCI_FAULT) ? m_GfiFaultStartMs : m_NoGndStart));
+  return 0; //GFI_TIMEOUT - (millis() - ((m_EvseState == EVSE_STATE_GFCI_FAULT) ? m_GfiFaultStartMs : m_NoGndStart));
 }
 
 
