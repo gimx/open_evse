@@ -83,8 +83,7 @@ void J1772SlavePilot::Init()
 {
   pinMode(MASTER_PILOT_PIN, INPUT);
   
-  pinMode(PILOT_PIN, OUTPUT);
-  digitalWrite(PILOT_PIN, HIGH);
+  pinMode(PILOT_PIN, INPUT);
     
   //master pilot sensing
   attachInterrupt(digitalPinToInterrupt(MASTER_PILOT_PIN), onMasterPilotChange, CHANGE); 
@@ -101,6 +100,7 @@ void J1772SlavePilot::Init()
 // here we just disable off  PWM
 void J1772SlavePilot::SetState(PILOT_STATE state)
 {
+   pinMode(PILOT_PIN, INPUT); // do not interfere, high Z
   
   if (state == PILOT_STATE_P12) {
     TCCR2A &= ~(_BV(COM2B0)|_BV(COM2B1));
@@ -135,6 +135,10 @@ int J1772SlavePilot::SetPWM(int amps)
   Serial.print(ocr1b);Serial.print("cycles. amps:");Serial.println(amps);
 #endif  
   if (ocr1b) {
+
+    pinMode(PILOT_PIN, OUTPUT);
+  digitalWrite(PILOT_PIN, HIGH);
+  
     AutoCriticalSection asc;
     
     // 10% = 24 , 96% = 239
