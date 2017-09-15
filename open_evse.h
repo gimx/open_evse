@@ -362,10 +362,10 @@
 
 
 // must stay within thresh for this time in ms before switching states
-#define DELAY_STATE_TRANSITION 250
+#define DELAY_STATE_TRANSITION 10// 250
 // must transition to state A from contacts closed in < 100ms according to spec
 // but Leaf sometimes bounces from 3->1 so we will debounce it a little anyway
-#define DELAY_STATE_TRANSITION_A 25
+#define DELAY_STATE_TRANSITION_A 1//25
 
 // for ADVPWR
 #define GROUND_CHK_DELAY  1000 // delay after charging started to test, ms

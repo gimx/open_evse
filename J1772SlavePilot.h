@@ -31,9 +31,7 @@ public:
   }
   void Init();
   void SetState(PILOT_STATE pstate); // P12/N12
-  PILOT_STATE GetState() { 
-    return m_State; 
-  }
+  PILOT_STATE GetState();
   int SetPWM(int amps); // 12V 1KHz PWM
   int SenseMaster(); 
 };
