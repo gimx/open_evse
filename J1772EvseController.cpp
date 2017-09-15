@@ -268,26 +268,6 @@ void J1772EVSEController::chargingOff()
 #endif
 } 
 
-void J1772EVSEController::HardFault()
-{
-  SetHardFault();
- 
-  while (1) {
-    ProcessInputs(); // spin forever or until user resets via menu
-    // if we're in P12 state, we can recover from the hard fault when EV
-    // is unplugged
-    if (m_Pilot.GetState() == PILOT_STATE_P12) {
-      uint16_t plow,phigh;
-      ReadPilot(&plow,&phigh);
-      if (phigh >= m_ThreshData.m_ThreshAB) {
-	// EV disconnected - cancel fault
-	m_EvseState = EVSE_STATE_UNKNOWN;
-	break;
-      }
-    }
-  }
-  ClrHardFault();
-}
 
 #ifdef GFI
 void J1772EVSEController::SetGfiTripped()
@@ -540,241 +520,6 @@ void J1772EVSEController::SetSvcLevel(uint8_t svclvl,uint8_t updatelcd)
   }
 }
 
-#ifdef ADVPWR
-
-// acpinstate : bit 1 = AC pin 1, bit0 = AC pin 2
-uint8_t J1772EVSEController::ReadACPins()
-{
-#ifndef OPENEVSE_2
-#ifdef SAMPLE_ACPINS
-  //
-  // AC pins are active low, so we set them high
-  // and then if voltage is detected on a pin, it will go low
-  //
-  uint8_t ac1 = 2;
-  uint8_t ac2 = 1;
-  unsigned long startms = millis();
-  
-  do {
-    if (ac1 && !pinAC1.read()) {
-      ac1 = 0;
-    }
-    if (ac2 && !pinAC2.read()) {
-      ac2 = 0;
-    }
-  } while ((ac1 || ac2) && ((millis() - startms) < AC_SAMPLE_MS));
-  return ac1 | ac2;
-#else // !SAMPLE_ACPINS
-  return (pinAC1.read() ? 2 : 0) | (pinAC2.read() ? 1 : 0);
-#endif // SAMPLE_ACPINS
-#else
-  // For OpenEVSE II, there is only ACLINE1_PIN, and it is
-  // active *high*. '3' is the value for "both AC lines dead"
-  // and '0' is the value for "both AC lines live". There is
-  // no need to sample, as the hardware does a peak-hold.
-  return (pinAC1.read() ? 0 : 3);
-#endif // OPENEVSE_2
-}
-
-
-
-uint8_t J1772EVSEController::doPost()
-{
-  WDT_RESET();
-
-  uint8_t RelayOff;
-#ifndef OPENEVSE_2
-  uint8_t Relay1, Relay2; //Relay Power status
-#endif
-  uint8_t svcState = UD;	// service state = undefined
-
-#ifdef SERDBG
-  if (SerDbgEnabled()) {
-    Serial.print("POST start...");
-  }
-#endif //#ifdef SERDBG
-
-
-  m_Pilot.SetState(PILOT_STATE_P12); //check to see if EV is plugged in
-
-  g_OBD.SetRedLed(1); 
-#ifdef LCD16X2 //Adafruit RGB LCD
-  g_OBD.LcdMsg_P(g_psPwrOn,g_psSelfTest);
-#endif //Adafruit RGB LCD 
-
-  if (AutoSvcLevelEnabled()) {
-#ifdef OPENEVSE_2
-    // For OpenEVSE II, there is a voltmeter for auto L1/L2.
-    uint32_t long ac_volts = ReadVoltmeter();
-    if (ac_volts > L2_VOLTAGE_THRESHOLD) {
-      svcState = L2;
-    } else {
-      svcState = L1;
-    }
-#ifdef SERDBG
-    if (SerDbgEnabled()) {
-      Serial.print("AC millivolts: ");Serial.println(ac_volts);
-      Serial.print("SvcState: ");Serial.println((int)svcState);
-    }  
-#endif //#ifdef SERDBG
-#ifdef LCD16X2
-    g_OBD.LcdMsg_P(g_psAutoDetect,(svcState == L2) ? g_psLevel2 : g_psLevel1);
-#endif //LCD16x2
-
-#else //!OPENEVSE_2
-
-    delay(150); // delay reading for stable pilot before reading
-    int reading = adcPilot.read(); //read pilot
-#ifdef SERDBG
-    if (SerDbgEnabled()) {
-      Serial.print("Pilot: ");Serial.println((int)reading);
-    }
-#endif //#ifdef SERDBG
-
-    m_Pilot.SetState(PILOT_STATE_N12);
-    if (reading > 900) {  // IF EV is not connected its Okay to open the relay the do the L1/L2 and ground Check
-
-      // save state with both relays off - for stuck relay state
-      RelayOff = ReadACPins();
-          
-      // save state with Relay 1 on 
-      pinCharging.write(1);
-#ifdef CHARGINGAC_REG
-      pinChargingAC.write(1);
-#endif
-      delay(RelaySettlingTime);
-      Relay1 = ReadACPins();
-      pinCharging.write(0);
-#ifdef CHARGINGAC_REG
-      pinChargingAC.write(0);
-#endif
-      delay(RelaySettlingTime); //allow relay to fully open before running other tests
-          
-      // save state for Relay 2 on
-#ifdef CHARGING2_REG
-      pinCharging2.write(1); 
-#endif
-      delay(RelaySettlingTime);
-      Relay2 = ReadACPins();
-#ifdef CHARGING2_REG
-      pinCharging2.write(0); 
-#endif
-      delay(RelaySettlingTime); //allow relay to fully open before running other tests
-        
-      // decide input power state based on the status read  on L1 and L2
-      // either 2 SPST or 1 DPST relays can be configured 
-      // valid svcState is L1 - one hot, L2 both hot, OG - open ground both off, SR - stuck relay when shld be off 
-      //  
-      if (RelayOff == none) { // relay not stuck on when off
-	switch ( Relay1 ) {
-	case ( both ): //
-	  if ( Relay2 == none ) svcState = L2;
-	  if (StuckRelayChkEnabled()) {
-	    if ( Relay2 != none ) svcState = SR;
-	  }
-	  break;
-	case ( none ): //
-	  if (GndChkEnabled()) {
-	    if ( Relay2 == none ) svcState = OG;
-	  }
-	  if ( Relay2 == both ) svcState = L2;
-	  if ( Relay2 == L1 || Relay2 == L2 ) svcState = L1;
-	  break;
-	case ( L1on ): // L1 or L2
-	case ( L2on ):
-	  if (StuckRelayChkEnabled()) {
-	    if ( Relay2 != none ) svcState = SR;
-	  }
-	if ( Relay2 == none ) svcState = L1;
-	if ( (Relay1 == L1on) && (Relay2 == L2on)) svcState = L2;
-	if ( (Relay1 == L2on) && (Relay2 == L1on)) svcState = L2;
-	break;
-	} // end switch
-      }
-      else { // Relay stuck on
-	if (StuckRelayChkEnabled()) {
-	  svcState = SR;
-	}
-      }
-#ifdef SERDBG
-      if (SerDbgEnabled()) {
-	Serial.print("RelayOff: ");Serial.println((int)RelayOff);
-	Serial.print("Relay1: ");Serial.println((int)Relay1);
-	Serial.print("Relay2: ");Serial.println((int)Relay2);
-	Serial.print("SvcState: ");Serial.println((int)svcState);
-      }  
-#endif //#ifdef SERDBG
-
-      // update LCD
-#ifdef LCD16X2
-      if (svcState == L1) g_OBD.LcdMsg_P(g_psAutoDetect,g_psLevel1);
-      if (svcState == L2) g_OBD.LcdMsg_P(g_psAutoDetect,g_psLevel2);
-      if ((svcState == OG) || (svcState == SR))  {
-	g_OBD.LcdSetBacklightColor(RED);
-      }
-      if (svcState == OG) g_OBD.LcdMsg_P(g_psTestFailed,g_psNoGround);
-      if (svcState == SR) g_OBD.LcdMsg_P(g_psTestFailed,g_psStuckRelay);
-#endif // LCD16X2
-    } // endif test, no EV is plugged in
-    else {
-      // since we can't auto detect, for safety's sake, we must set to L1
-      svcState = L2;
-      SetAutoSvcLvlSkipped(1);
-      // EV connected.. do stuck relay check
-      goto stuckrelaychk;
-    }
-#endif //#else OPENEVSE_2
-  }
-  else { // ! AutoSvcLevelEnabled
-#ifndef OPENEVSE_2
-  stuckrelaychk:
-#endif
-    if (StuckRelayChkEnabled()) {
-      RelayOff = ReadACPins();
-      if ((RelayOff & 3) != 3) {
-	svcState = SR;
-#ifdef LCD16X2
-	g_OBD.LcdMsg_P(g_psTestFailed,g_psStuckRelay);
-#endif // LCD16X2
-      }
-    }
-  } // endif AutoSvcLevelEnabled
-  
-#ifdef GFI_SELFTEST
-  // only run GFI test if no fault detected above
-  if (((svcState == UD)||(svcState == L1)||(svcState == L2)) &&
-      GfiSelfTestEnabled()) {
-    if (m_Gfi.SelfTest()) {
-#ifdef LCD16X2
-      g_OBD.LcdMsg_P(g_psTestFailed,g_psGfci);
-#endif // LCD16X2
-      svcState = FG;
-    }
-  }
-#endif
-
-  if ((svcState == OG)||(svcState == SR)||(svcState == FG)) {
-    g_OBD.LcdSetBacklightColor(RED);
-    g_OBD.SetGreenLed(0);
-    g_OBD.SetRedLed(1);
-  }
-  else {
-    g_OBD.SetRedLed(0);
-  }
-  m_Pilot.SetState(PILOT_STATE_P12);
-
-#ifdef SERDBG
-  if (SerDbgEnabled()) {
-    Serial.print("POST result: ");
-    Serial.println((int)svcState);
-  }
-#endif //#ifdef SERDBG
-
-  WDT_RESET();
-
-  return svcState;
-}
-#endif // ADVPWR
 
 void J1772EVSEController::Init()
 {
@@ -889,48 +634,6 @@ void J1772EVSEController::Init()
   m_PrevEvseState = EVSE_STATE_UNKNOWN;
 
 
-#ifdef ADVPWR
-
-#ifdef FT_READ_AC_PINS
-  while (1) {
-    WDT_RESET();
-    sprintf(g_sTmp,"%d",(int)ReadACPins());
-    g_OBD.LcdMsg("AC Pins",g_sTmp);
-  }
-#endif // FT_READ_AC_PINS
- 
-#ifdef SHOW_DISABLED_TESTS
-  ShowDisabledTests();
-#endif
- 
-  uint8_t fault; 
-  do {
-    fault = 0; // reset post fault
-    uint8_t psvclvl = doPost(); // auto detect service level overrides any saved values
-    
-    if ((AutoSvcLevelEnabled()) && ((psvclvl == L1) || (psvclvl == L2)))  svclvl = psvclvl; //set service level
-    if ((GndChkEnabled()) && (psvclvl == OG))  { m_EvseState = EVSE_STATE_NO_GROUND; fault = 1;} // set No Ground error
-    if ((StuckRelayChkEnabled()) && (psvclvl == SR)) { m_EvseState = EVSE_STATE_STUCK_RELAY; fault = 1; } // set Stuck Relay error
-#ifdef GFI_SELFTEST
-    if ((GfiSelfTestEnabled()) && (psvclvl == FG)) { m_EvseState = EVSE_STATE_GFI_TEST_FAILED; fault = 1; } // set GFI test fail error
-#endif
-    if (fault) {
-#ifdef UL_COMPLIANT
-      // UL wants EVSE to hard fault until power cycle if POST fails
-      while (1) { // spin forever
-	  ProcessInputs();
-      }
-#else // !UL_COMPLIANT
-      unsigned long faultms = millis();
-      // keep retrying POST every 2 minutes
-      while ((millis() - faultms) < 2*60000ul) {
-	ProcessInputs();
-      }
-#endif
-    }
-  } while ( fault && ( m_EvseState == EVSE_STATE_GFI_TEST_FAILED || m_EvseState == EVSE_STATE_NO_GROUND ||  m_EvseState == EVSE_STATE_STUCK_RELAY ));
-#endif // ADVPWR  
-
   SetSvcLevel(svclvl);
 
 #ifdef DELAYTIMER
@@ -971,6 +674,8 @@ void J1772EVSEController::ReadPilot(uint16_t *plow,uint16_t *phigh,int loopcnt)
 //Positive Voltage, State C  5.48 6.00 6.49 
 //Positive Voltage, State D  2.62 3.00 3.25 
 //Negative Voltage - States B, C, D, and F -11.40 -12.00 -12.60 
+//Thresholds {875,780,690,0,260};
+//            AB   BC  CD D  DS
 void J1772EVSEController::Update()
 {
   uint16_t plow;
@@ -980,14 +685,21 @@ void J1772EVSEController::Update()
   
   uint8_t prevevsestate = m_EvseState;
   uint8_t tmpevsestate = EVSE_STATE_UNKNOWN;
-  uint8_t nofault = 1;
-
-  if (nofault) {
+  int16_t deltap = 0;
     
     ReadPilot(&plow,&phigh);
-    
-
-    if (DiodeCheckEnabled() && (m_Pilot.GetState() == PILOT_STATE_PWM) && (plow >= m_ThreshData.m_ThreshDS)) {
+      
+    deltap = phigh-plow;
+      
+    if (deltap<10){ //master pilot steady 
+      if (phigh >= m_ThreshData.m_ThreshAB){
+        tmpevsestate = EVSE_STATE_A;
+      }
+      if (plow < 500){
+        tmpevsestate = EVSE_STATE_GFCI_FAULT;
+      }
+    }
+    else if (DiodeCheckEnabled() && (plow >= m_ThreshData.m_ThreshDS)) {
       // diode check failed
       tmpevsestate = EVSE_STATE_DIODE_CHK_FAILED;
     }
@@ -1001,21 +713,15 @@ void J1772EVSEController::Update()
     }
     else if (phigh  >= m_ThreshData.m_ThreshCD) {
       // 6V ready to charge
-      if (m_Pilot.GetState() == PILOT_STATE_PWM) {
-	tmpevsestate = EVSE_STATE_C;
-      }
-      else {
-	// PWM is off so we can't charge.. force to State B
-	tmpevsestate = EVSE_STATE_B;
-      }
+      tmpevsestate = EVSE_STATE_C;
     }
     else if (phigh > m_ThreshData.m_ThreshD) {
       // 3V ready to charge vent required
       if (VentReqEnabled()) {
-	tmpevsestate = EVSE_STATE_D;
+	      tmpevsestate = EVSE_STATE_D;
       }
       else {
-	tmpevsestate = EVSE_STATE_C;
+//	      tmpevsestate = EVSE_STATE_C;
       }
     }
     else {
@@ -1031,14 +737,16 @@ void J1772EVSEController::Update()
         m_EvseState = tmpevsestate;
       }
     }
-  } // nofault
+  
 
   m_TmpEvseState = tmpevsestate;
   
+//  Serial.println(m_EvseState);
   // state transition
   if (m_EvseState != prevevsestate) {
     if (m_EvseState == EVSE_STATE_A) { // EV not connected
       chargingOff(); // turn off charging current
+      ClrHardFault();
       m_Pilot.SetState(PILOT_STATE_P12);
       #ifdef KWH_RECORDING
         g_WattHours_accumulated = g_WattHours_accumulated + (g_WattSeconds / 3600);
@@ -1053,53 +761,27 @@ void J1772EVSEController::Update()
     }
     else if (m_EvseState == EVSE_STATE_B) { // connected 
       chargingOff(); // turn off charging current
+      ClrHardFault();
       m_Pilot.SetPWM(m_CurrentCapacity);
     }
     else if (m_EvseState == EVSE_STATE_C) {
       m_Pilot.SetPWM(m_CurrentCapacity);
-
+      ClrHardFault();
       chargingOn(); // turn on charging current
     }
     else if (m_EvseState == EVSE_STATE_D) {
       // vent required not supported
       chargingOff(); // turn off charging current
       m_Pilot.SetState(PILOT_STATE_P12);
-      HardFault();
-    }
-    else if (m_EvseState == EVSE_STATE_GFCI_FAULT) {
-      // vehicle state F
-      chargingOff(); // turn off charging current
-      m_Pilot.SetState(PILOT_STATE_P12);
-    }
-
-    else if (m_EvseState == EVSE_STATE_DIODE_CHK_FAILED) {
-      chargingOff(); // turn off charging current
-      // must leave pilot on so we can keep checking
-      // N.B. J1772 specifies to go to State F (-12V) but we can't do that
-      // and keep checking
-      m_Pilot.SetPWM(m_CurrentCapacity);
-      m_Pilot.SetState(PILOT_STATE_P12);
-      HardFault();
-    }
-    else if (m_EvseState == EVSE_STATE_NO_GROUND) {
-      // Ground not detected
-      chargingOff(); // turn off charging current
-      m_Pilot.SetState(PILOT_STATE_P12);
-    }
-    else if (m_EvseState == EVSE_STATE_STUCK_RELAY) {
-      // Stuck relay detected
-      chargingOff(); // turn off charging current
-      m_Pilot.SetState(PILOT_STATE_N12);
-#ifdef UL_COMPLIANT
-      // per discussion w/ UL Fred Reyes 20150217
-      // always hard fault stuck relay
-      HardFault();
-#endif // UL_COMPLIANT
+      SetHardFault();
     }
     else {
-      m_Pilot.SetState(PILOT_STATE_P12);
+      // vehicle state F
       chargingOff(); // turn off charging current
+      SetHardFault();
+      m_Pilot.SetState(PILOT_STATE_N12);
     }
+
 
 #ifdef RAPI
     g_ERP.sendEvseState();
@@ -1219,57 +901,6 @@ void J1772EVSEController::Update()
   }
 }
 
-#ifdef CALIBRATE
-// read ADC values and get min/max/avg for pilot steady high/low states
-void J1772EVSEController::Calibrate(PCALIB_DATA pcd)
-{
-  uint16_t pmax,pmin,pavg,nmax,nmin,navg;
-
-  for (int l=0;l < 2;l++) {
-    int reading;
-    uint32_t tot = 0;
-    uint16_t plow = 1023;
-    uint16_t phigh = 0;
-    uint16_t avg = 0;
-    m_Pilot.SetState(l ? PILOT_STATE_N12 : PILOT_STATE_P12);
-
-    delay(250); // wait for stabilization
-
-    // 1x = 114us 20x = 2.3ms 100x = 11.3ms
-    int i;
-    for (i=0;i < 1000;i++) {
-      reading = adcPilot.read();  // measures pilot voltage
-
-      if (reading > phigh) {
-        phigh = reading;
-      }
-      else if (reading < plow) {
-        plow = reading;
-      }
-
-      tot += reading;
-    }
-    avg = tot / i;
-
-    if (l) {
-      nmax = phigh;
-      nmin = plow;
-      navg = avg;
-    }
-    else {
-      pmax = phigh;
-      pmin = plow;
-      pavg = avg;
-    }
-  }
-  pcd->m_pMax = pmax;
-  pcd->m_pAvg = pavg;
-  pcd->m_pMin = pmin;
-  pcd->m_nMax = nmax;
-  pcd->m_nAvg = navg;
-  pcd->m_nMin = nmin;
-}
-#endif // CALIBRATE
 
 int J1772EVSEController::SetCurrentCapacity(uint8_t amps,uint8_t updatelcd,uint8_t nosave)
 {

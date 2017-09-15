@@ -87,7 +87,6 @@ void J1772SlavePilot::Init()
     
   //master pilot sensing
   attachInterrupt(digitalPinToInterrupt(MASTER_PILOT_PIN), onMasterPilotChange, CHANGE); 
-  SenseMaster(); //TODO set sensed max amps
 }
 
 
@@ -103,11 +102,11 @@ void J1772SlavePilot::SetState(PILOT_STATE state)
    pinMode(PILOT_PIN, INPUT); // do not interfere, high Z
   
   if (state == PILOT_STATE_P12) {
-    TCCR2A &= ~(_BV(COM2B0)|_BV(COM2B1));
+    TCCR2A &= ~(_BV(COM2B0)|_BV(COM2B1)); //stop PWM
 //    digitalWrite(PILOT_PIN,HIGH);
   }
   else{
-    TCCR2A &= ~(_BV(COM2B0)|_BV(COM2B1));
+    TCCR2A &= ~(_BV(COM2B0)|_BV(COM2B1)); //stop PWM
 //    digitalWrite(PILOT_PIN,LOW);
   }
   
@@ -121,7 +120,9 @@ void J1772SlavePilot::SetState(PILOT_STATE state)
 //
 int J1772SlavePilot::SetPWM(int amps)
 {
-
+//  int16_t limit = SenseMaster(); 
+//  amps = min( max(0,limit), amps); // limit commanding by amps value sensed on master pilot
+    
   uint8_t ocr1b = 0;
   if ((amps >= 6) && (amps <= 51)) {
     ocr1b = 25 * amps / 6 - 1;  // J1772 states "Available current = (duty cycle %) X 0.6"
@@ -132,7 +133,7 @@ int J1772SlavePilot::SetPWM(int amps)
     return 1; // error
   }
 #ifdef SERDBG
-  Serial.print(ocr1b);Serial.print("cycles. amps:");Serial.println(amps);
+//  Serial.print(ocr1b);Serial.print(" cycles, i.e. amps:");Serial.println(amps);
 #endif  
   if (ocr1b) {
 
@@ -162,11 +163,15 @@ int J1772SlavePilot::SenseMaster()
   uint32_t tPeriod = tLow+tHigh;
   uint16_t duty = (uint16_t)((double)tHigh*100/tPeriod);
   uint16_t amps = 0;
+
+  if (tPeriod == 0){//steady master, nothing measured yet
+    return 0;
+  }
   
   if(tPeriod<950 || tPeriod>1050){
     //check if the master PWM signal is standard compliant (within measurement tolerances of the Arduino)
   #ifdef SERDBG
-    Serial.print("Pilot PWM outside of 5% tolerance of 1kHz."); Serial.println(tPeriod);
+    Serial.print("Pilot PWM outside of 5% tolerance of 1kHz. tP[ms]="); Serial.println(tPeriod);
   #endif
     return -1;
   } 
@@ -183,10 +188,41 @@ int J1772SlavePilot::SenseMaster()
      amps = (uint16_t)((duty-64)*2.5);
   }
   #ifdef SERDBG
-    Serial.print(tHigh);Serial.print(", ");Serial.print(tLow);Serial.println(", ");
-    Serial.print(duty);Serial.print(", ");Serial.print(amps);Serial.println(", ");
+//    Serial.print(tHigh);Serial.print(", ");Serial.print(tLow);Serial.println(", ");
+//    Serial.print(duty);Serial.print(", ");Serial.print(amps);Serial.println(", ");
   #endif //#ifdef SERDBG
   return amps;  
 }
 
 
+PILOT_STATE J1772SlavePilot::GetState()  { 
+  #if 0
+  uint16_t pl = 1023;
+  uint16_t ph = 0;
+  int16_t deltp = 0;
+
+  // 1x = 114us 20x = 2.3ms 100x = 11.3ms
+  for (int i=0;i < 100;i++) {
+    uint16_t reading = adcPilot.read();  // measures pilot voltage
+    
+    if (reading > ph) {
+      ph = reading;
+    }
+    else if (reading < pl) {
+      pl = reading;
+    }
+  }
+
+  deltap = ph-pl;
+ 
+  if (deltap<10){ //pilot steady 
+    if (ph >= 500){
+      mState = PILOT_STATE_P12;
+    }
+    if (pl < 500){
+      mState = PILOT_STATE_N12;
+    }
+  }
+  #endif
+  return m_State; 
+}
