@@ -63,11 +63,14 @@ void onMasterPilotChange() {
   
   if (state == HIGH) { //rising 
     if (dutyCycleChanged){ 
+      delayMicroseconds(155); // phase delay to trick polar charger checking
       OSP_SET_AND_FIRE(cycles);
       dutyCycleChanged = false;
     }
-    else 
+    else{ 
+      delayMicroseconds(155); // phase delay to trick polar charger checking
       OSP_FIRE();
+    }
   
     t0=  micros();
     tLow = t0-t1;
@@ -120,12 +123,12 @@ void J1772SlavePilot::SetState(PILOT_STATE state)
 //
 int J1772SlavePilot::SetPWM(int amps)
 {
-//  int16_t limit = SenseMaster(); 
-//  amps = min( max(0,limit), amps); // limit commanding by amps value sensed on master pilot
+  int16_t limit = SenseMaster(); 
+  amps = min( max(0,limit), amps); // limit commanding by amps value sensed on master pilot
     
   uint8_t ocr1b = 0;
   if ((amps >= 6) && (amps <= 51)) {
-    ocr1b = 25 * amps / 6 - 1;  // J1772 states "Available current = (duty cycle %) X 0.6"
+    ocr1b = 25 * amps / 6;  // J1772 states "Available current = (duty cycle %) X 0.6"
   } else if ((amps > 51) && (amps <= 80)) {
     ocr1b = amps + 159;  // J1772 states "Available current = (duty cycle % - 64) X 2.5"
   }
