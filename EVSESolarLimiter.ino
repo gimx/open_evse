@@ -1,13 +1,12 @@
-#include "open_evse.h"
+#include <PinChangeInt.h>
 
-#define S0_PULSE_IDX 6
+#include "open_evse.h"
 
 
 //S0 pulse counter
-const byte min_pulsewidth= 110;                                // minimum width of interrupt pulse (default pulse output meters = 100ms)
-volatile byte pulseCount = 0;
-unsigned long pulsetime=0;                                    // Record time of interrupt pulse
-unsigned long start=0;
+volatile unsigned long pulseCount = 0;
+volatile unsigned long pulsetime=0;                                    // Record time of interrupt pulse
+
 
 char g_sTmp[TMP_BUF_SIZE];
 
@@ -42,8 +41,11 @@ void setup(){
   EvseReset(); 
 
  //S0 pulse counter
-  pinMode(S0_PULSE_IDX, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(S0_PULSE_IDX), onPulse, FALLING);     // Attach pulse counting interrupt pulse counting
+  pinMode(S0_PULSE_PIN, INPUT_PULLUP);
+  PCintPort::attachInterrupt(S0_PULSE_PIN, onS0Pulse, FALLING);     // Attach pulse counting interrupt pulse counting
+
+  //Enable Digital Communication pin
+  pinMode(DCOM_ENAB_PIN, INPUT_PULLUP);
   
 #ifdef KWH_RECORDING
   if (eeprom_read_dword((uint32_t*)EOFS_KWH_ACCUMULATED) == 0xffffffff) { // Check for unitialized eeprom condition so it can begin at 0kWh
@@ -57,7 +59,9 @@ void setup(){
 
  
 // ISR runs each time a falling edge of a pulse is detected
-void onPulse(){
+void onS0Pulse(){
+  const byte min_pulsewidth= 110;                                // minimum width of interrupt pulse (default pulse output meters = 100ms)
+
   if ( (millis() - pulsetime) > min_pulsewidth) {
     pulseCount++;          //calculate wh elapsed from time between pulses
   }
@@ -86,15 +90,12 @@ void ProcessInputs()
 
 void loop(){
 
+  g_WattSeconds =  pulseCount*3600;  // accumulate Watt Seconds for charging (scaled for 1000imp/kWh = 1 imp/Wh = 3600imp/Ws)
   g_EvseController.Update();
 
   g_OBD.Update();
 
   ProcessInputs();
-    
-//    Serial.println(pulseCount);
-    g_WattSeconds = pulseCount * 1.2;
-
 }
 
 OnboardDisplay g_OBD;

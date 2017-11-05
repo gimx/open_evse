@@ -32,6 +32,28 @@ OnboardDisplay::OnboardDisplay()
 {
 }
 
+#if defined(DELAYTIMER)||defined(TIME_LIMIT)
+const char CustomChar_0[8] PROGMEM = {0x0,0xe,0x15,0x17,0x11,0xe,0x0,0x0}; // clock
+#endif
+#ifdef DELAYTIMER
+const char CustomChar_1[8] PROGMEM = {0x0,0x0,0xe,0xe,0xe,0x0,0x0,0x0}; // stop (cube)
+const char CustomChar_2[8] PROGMEM = {0x0,0x8,0xc,0xe,0xc,0x8,0x0,0x0}; // play
+#endif // DELAYTIMER
+#if defined(DELAYTIMER)||defined(CHARGE_LIMIT)
+const char CustomChar_3[8] PROGMEM = {0x0,0xe,0xc,0x1f,0x3,0x6,0xc,0x8}; // lightning
+#endif
+#ifdef AUTH_LOCK
+const char CustomChar_4[8] PROGMEM = { // padlock
+  0b00000,
+  0b01110,
+  0b01010,
+  0b11111,
+  0b11011,
+  0b11011,
+  0b01110,
+  0b00000
+};
+#endif // AUTH_LOCK
 
 void OnboardDisplay::MakeChar(uint8_t n, PGM_P bytes)
 {
@@ -398,10 +420,7 @@ void OnboardDisplay::Update(int8_t updmode)
 #endif
    
 #ifdef KWH_RECORDING
-      uint32_t current = g_EvseController.GetChargingCurrent();
-
-      g_WattSeconds =  pulseCount*3600;  // accumulate Watt Seconds for charging (scaled for 1000imp/kWh)
-     
+      uint32_t current = g_EvseController.GetChargingCurrent();     
       sprintf(g_sTmp,"%5luWh",(g_WattSeconds / 3600) );
       LcdPrint(0,1,g_sTmp);
 

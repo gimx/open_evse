@@ -36,7 +36,7 @@
 #include "WProgram.h" // shouldn't need this but arduino sometimes messes up and puts inside an #ifdef
 #endif // ARDUINO
 
-#define VERSION "0.1.0"
+#define VERSION "0.3.0"
 
 //-- begin features
 
@@ -105,10 +105,10 @@
 
 // kWh Recording feature depends upon #AMMETER support
 // comment out KWH_RECORDING to have the elapsed time and time of day displayed on the second line of the LCD
-//#define KWH_RECORDING
+#define KWH_RECORDING
 #ifdef KWH_RECORDING
 // stop charging after a certain kWh reached
-//#define CHARGE_LIMIT
+#define CHARGE_LIMIT
 #endif // KWH_RECORDING
 
 
@@ -276,7 +276,7 @@
 
 // current capacity in amps
 #define DEFAULT_CURRENT_CAPACITY_L1 12
-#define DEFAULT_CURRENT_CAPACITY_L2 24
+#define DEFAULT_CURRENT_CAPACITY_L2 32
 
 // minimum allowable current in amps
 #define MIN_CURRENT_CAPACITY_L1 6
@@ -326,10 +326,16 @@
 //#define GREEN_LED_IDX 5
 #endif // OPENEVSE_2
 
-//#define PILOT_REG &PINB
+
 #define PILOT_PIN 3 //3,11
 #define MASTER_PILOT_PIN 2
+#define MASTER_SLAVE_PHASE_DELAY_US 155
 
+//S0 pulse counter input pin as energy meter
+#define S0_PULSE_PIN 6
+
+//Digital Communication Enable, low active
+#define DCOM_ENAB_PIN 5
 
 #define SERIAL_BAUD 115200
 
