@@ -21,12 +21,10 @@
 
 // one shot pulse generator from https://wp.josh.com/2015/03/05/the-perfect-pulse-some-tricks-for-generating-precise-one-shots-on-avr8/
 #define OSP_SET_WIDTH(cycles) (OCR2B = 0xff-(cycles-1))
-//#define OSP_SET_WIDTH(cycles) (OCR2A = 0xff-(cycles-1))
 
 // Setup the one-shot pulse generator and initialize with a pulse width that is (cycles) clock counts long
 void osp_setup(uint8_t cycles) {
   TCCR2B =  0;      // Halt counter by setting clock select bits to 0 (No clock source).
-//  TCCR2A =  0;      // Halt counter by setting clock select bits to 0 (No clock source).
                     // This keeps anyhting from happeneing while we get set up
 
   TCNT2 = 0x00;     // Start counting at bottom. 
@@ -35,14 +33,12 @@ void osp_setup(uint8_t cycles) {
   OSP_SET_WIDTH(cycles);    // This also makes new OCR values get loaded frm the buffer on every clock cycle. 
 
   TCCR2A = _BV(COM2B0) | _BV(COM2B1) | _BV(WGM20) | _BV(WGM21); // OC2B=Set on Match, clear on BOTTOM. Mode 7 Fast PWM.
-  //TCCR2A = _BV(COM2A0) | _BV(COM2A1) | _BV(WGM20) | _BV(WGM21); // OC2B=Set on Match, clear on BOTTOM. Mode 7 Fast PWM.
   TCCR2B = _BV(WGM22)| _BV(CS22);         // Start counting now. WGM22=1 to select Fast PWM mode 7
 }
 
 
 // Fire a one-shot pulse. Use the most recently set width. 
 #define OSP_FIRE() (TCNT2 = OCR2B - 1)
-//#define OSP_FIRE() (TCNT2 = OCR2A - 1)
 
 // Test there is currently a pulse still in progress
 #define OSP_INPROGRESS() (TCNT2>0)
@@ -51,7 +47,6 @@ void osp_setup(uint8_t cycles) {
 // Order of operations in calculating m must avoid overflow of the unint8_t.
 // TCNT2 starts one count lower than the match value becuase the chip will block any compare on the cycle after setting a TCNT. 
 #define OSP_SET_AND_FIRE(cycles) {uint8_t m=0xff-(cycles-1); OCR2B=m; TCNT2=m-1;}
-//#define OSP_SET_AND_FIRE(cycles) {uint8_t m=0xff-(cycles-1); OCR2A=m; TCNT2=m-1;}
 
 
 #define TOP ((F_CPU / 2000000) * 1000) // for 1KHz (=1000us period)
@@ -63,12 +58,12 @@ void onMasterPilotChange() {
   
   if (state == HIGH) { //rising 
     if (dutyCycleChanged){ 
-      delayMicroseconds(155); // phase delay to trick polar charger checking
+      delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
       OSP_SET_AND_FIRE(cycles);
       dutyCycleChanged = false;
     }
     else{ 
-      delayMicroseconds(155); // phase delay to trick polar charger checking
+      delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
       OSP_FIRE();
     }
   
@@ -135,6 +130,12 @@ int J1772SlavePilot::SetPWM(int amps)
   else {
     return 1; // error
   }
+
+//overwrite setting 5% duty cycle to signal digital communication
+  if (digitalRead(DCOM_ENAB_PIN) == LOW){
+    ocr1b = 25 * 5;
+  }
+  
 #ifdef SERDBG
 //  Serial.print(ocr1b);Serial.print(" cycles, i.e. amps:");Serial.println(amps);
 #endif  
