@@ -46,6 +46,8 @@ void setup(){
 
   //Enable Digital Communication pin
   pinMode(DCOM_ENAB_PIN, INPUT_PULLUP);
+
+  WDT_ENABLE();
   
 #ifdef KWH_RECORDING
   if (eeprom_read_dword((uint32_t*)EOFS_KWH_ACCUMULATED) == 0xffffffff) { // Check for unitialized eeprom condition so it can begin at 0kWh
@@ -64,6 +66,7 @@ void onS0Pulse(){
 
   if ( (millis() - pulsetime) > min_pulsewidth) {
     pulseCount++;          //calculate wh elapsed from time between pulses
+    g_WattSeconds =  pulseCount*3600;  // accumulate Watt Seconds for charging (scaled for 1000imp/kWh = 1 imp/Wh = 3600imp/Ws)
   }
   pulsetime=millis();
   //Watt = 1/1000 Wh / pulsetime
@@ -90,7 +93,8 @@ void ProcessInputs()
 
 void loop(){
 
-  g_WattSeconds =  pulseCount*3600;  // accumulate Watt Seconds for charging (scaled for 1000imp/kWh = 1 imp/Wh = 3600imp/Ws)
+  WDT_ENABLE();
+    
   g_EvseController.Update();
 
   g_OBD.Update();
