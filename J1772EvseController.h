@@ -297,6 +297,9 @@ public:
 
 #ifdef AMMETER
   int32_t GetChargingCurrent() { return m_ChargingCurrent; }
+  void SetChargingCurrent(int32_t current) { 
+    m_ChargingCurrent=current; 
+  }
   int16_t GetAmmeterCurrentOffset() { return m_AmmeterCurrentOffset; }
   int16_t GetCurrentScaleFactor() { return m_CurrentScaleFactor; }
   void SetAmmeterCurrentOffset(int16_t offset) {

@@ -28,7 +28,8 @@
 #include <avr/eeprom.h>
 #include <pins_arduino.h>
 #include <Wire.h>
-#include "./Time.h"
+
+
 #include "avrstuff.h"
 #if defined(ARDUINO) && (ARDUINO >= 100)
 #include "Arduino.h"
@@ -36,7 +37,7 @@
 #include "WProgram.h" // shouldn't need this but arduino sometimes messes up and puts inside an #ifdef
 #endif // ARDUINO
 
-#define VERSION "0.3.0"
+#define VERSION "0.4.0"
 
 //-- begin features
 
@@ -44,7 +45,7 @@
 //#define SHOW_DISABLED_TESTS
 
 // current measurement
-//#define AMMETER
+#define AMMETER
 
 // serial remote api
 #define RAPI
@@ -58,7 +59,7 @@
 #define WATCHDOG
 
 // charge for a specified amount of time and then stop
-// #define TIME_LIMIT
+#define TIME_LIMIT
 
 
 // Support for Nick Sayer's OpenEVSE II board, which has alternate hardware for ground check/stuck relay check and a voltmeter for L1/L2.
@@ -154,9 +155,15 @@
 
 // Option for RTC and DelayTime
 // REQUIRES HARDWARE RTC: DS1307 or DS3231 connected via I2C
-//#define RTC // enable RTC & timer functions
+#define RTC // enable RTC & timer functions
 
 #ifdef RTC
+
+#include "./RTClib.h"
+#include "./Time.h"
+extern RTC_DS1307 g_RTC;
+extern DateTime g_CurrTime;
+
 // Option for Delay Timer - GoldServe
 #define DELAYTIMER
 
@@ -284,7 +291,7 @@
 
 // maximum allowable current in amps
 #define MAX_CURRENT_CAPACITY_L1 16 // J1772 Max for L1 on a 20A circuit
-#define MAX_CURRENT_CAPACITY_L2 30 // J1772 Max for L2
+#define MAX_CURRENT_CAPACITY_L2 32 // J1772 Max for L2
 
 //J1772EVSEController
 //#define CURRENT_PIN 0 // analog current reading pin ADCx
@@ -329,7 +336,7 @@
 
 #define PILOT_PIN 3 //3,11
 #define MASTER_PILOT_PIN 2
-#define MASTER_SLAVE_PHASE_DELAY_US 155
+#define MASTER_SLAVE_PHASE_DELAY_US 0// 155
 
 //S0 pulse counter input pin as energy meter
 #define S0_PULSE_PIN 6
@@ -618,10 +625,10 @@ typedef union union4b {
 #include "serialcli.h"
 #include "OnboardDisplay.h"
 
-
 #ifdef GFI
 #include "Gfi.h"
 #endif // GFI
+
 
 #ifdef TEMPERATURE_MONITORING
 #include "./Adafruit_MCP9808.h"  //  adding the ambient temp sensor to I2C
