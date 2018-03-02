@@ -1,4 +1,5 @@
-#include <PinChangeInt.h>
+#define LIBCALL_ENABLEINTERRUPT
+#include <EnableInterrupt.h>
 
 #include "open_evse.h"
 
@@ -67,7 +68,7 @@ void setup(){
 
  //S0 pulse counter
   pinMode(S0_PULSE_PIN, INPUT_PULLUP);
-//  PCintPort::attachInterrupt(S0_PULSE_PIN, onS0Pulse, FALLING);     // Attach pulse counting interrupt pulse counting
+  enableInterrupt(S0_PULSE_PIN | PINCHANGEINTERRUPT, onS0Pulse, FALLING);     // Attach pulse counting interrupt pulse counting
 
   //Enable Digital Communication pin
   pinMode(DCOM_ENAB_PIN, INPUT_PULLUP);

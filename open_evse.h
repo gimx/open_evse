@@ -37,7 +37,7 @@
 #include "WProgram.h" // shouldn't need this but arduino sometimes messes up and puts inside an #ifdef
 #endif // ARDUINO
 
-#define VERSION "0.4.0"
+#define VERSION "0.5.0"
 
 //-- begin features
 
@@ -61,24 +61,9 @@
 // charge for a specified amount of time and then stop
 #define TIME_LIMIT
 
-
-// Support for Nick Sayer's OpenEVSE II board, which has alternate hardware for ground check/stuck relay check and a voltmeter for L1/L2.
-//#define OPENEVSE_2
-
-#ifdef OPENEVSE_2
-// If the AC voltage is > 150,000 mV, then it's L2. Else, L1.
-#define L2_VOLTAGE_THRESHOLD (150000)
-#define VOLTMETER
-// 35 ms is just a bit longer than 1.5 cycles at 50 Hz
-#define VOLTMETER_POLL_INTERVAL (35)
-// This is just a wild guess
-// #define VOLTMETER_SCALE_FACTOR (266)     // original guess
-#define DEFAULT_VOLT_SCALE_FACTOR (262)        // calibrated for Craig K OpenEVSE II build
-//#define DEFAULT_VOLT_SCALE_FACTOR (298)        // calibrated for lincomatic's OEII
-// #define VOLTMETER_OFFSET_FACTOR (40000)  // original guess
-#define DEFAULT_VOLT_OFFSET (46800)     // calibrated for Craig K OpenEVSE II build
-//#define DEFAULT_VOLT_OFFSET (12018)     // calibrated for lincomatic's OEII
-#endif // OPENEVSE_2
+// digital Relay trigger pin
+#define CHARGING_REG &PINB
+#define CHARGING_IDX 0
 
 // GFI support
 //#define GFI
@@ -296,47 +281,10 @@ extern DateTime g_CurrTime;
 //J1772EVSEController
 //#define CURRENT_PIN 0 // analog current reading pin ADCx
 #define VOLT_PIN 1 // analog pilot voltage reading pin ADCx
-#ifdef OPENEVSE_2
-#define VOLTMETER_PIN 2 // analog AC Line voltage voltemeter pin ADCx
-// This pin must match the last write to CHARGING_PIN, modulo a delay. If
-// it is low when CHARGING_PIN is high, that's a missing ground.
-// If it's high when CHARGING_PIN is low, that's a stuck relay.
-// Auto L1/L2 is done with the voltmeter.
-#define ACLINE1_REG &PIND // OpenEVSE II has only one AC test pin.
-#define ACLINE1_IDX 3 
 
-#define CHARGING_REG &PIND // OpenEVSE II has just one relay pin.
-#define CHARGING_IDX 7 // OpenEVSE II has just one relay pin.
-#else // !OPENEVSE_2
- // TEST PIN 1 for L1/L2, ground and stuck relay
-//#define ACLINE1_REG &PIND
-//#define ACLINE1_IDX 3
- // TEST PIN 2 for L1/L2, ground and stuck relay
-//#define ACLINE2_REG &PIND
-//#define ACLINE2_IDX 4
-
-// digital Relay trigger pin
-#define CHARGING_REG &PINB
-#define CHARGING_IDX 0
-// digital Relay trigger pin for second relay
-//#define CHARGING2_REG &PIND
-//#define CHARGING2_IDX 7
-//digital Charging pin for AC relay
-//#define CHARGINGAC_REG &PINB
-//#define CHARGINGAC_IDX 1
-
-// obsolete LED pin
-//#define RED_LED_REG &PIND
-//#define RED_LED_IDX 5
-// obsolete LED pin
-//#define GREEN_LED_REG &PINB
-//#define GREEN_LED_IDX 5
-#endif // OPENEVSE_2
-
-
-#define PILOT_PIN 3 //3,11
 #define MASTER_PILOT_PIN 2
-#define MASTER_SLAVE_PHASE_DELAY_US 0// 155
+#define PILOT_PIN 3
+#define MASTER_SLAVE_PHASE_DELAY_US 10// 155
 
 //S0 pulse counter input pin as energy meter
 #define S0_PULSE_PIN 6
@@ -388,33 +336,7 @@ extern DateTime g_CurrTime;
 // for SAMPLE_ACPINS - max number of ms to sample
 #define AC_SAMPLE_MS 20 // 1 cycle @ 60Hz = 16.6667ms @ 50Hz = 20ms
 
-#ifdef GFI
-#define GFI_INTERRUPT 0 // interrupt number 0 = PD2, 1 = PD3
-// interrupt number 0 = PD2, 1 = PD3
-#define GFI_REG &PIND
-#define GFI_IDX 2
 
-#ifdef GFI_SELFTEST
-// pin is supposed to be wrapped around the GFI CT 5+ times
-#define GFITEST_REG &PIND
-#define GFITEST_IDX 6
-
-#define GFI_TEST_CYCLES 60
-// GFI pulse should be 50% duty cycle
-#define GFI_PULSE_ON_US 8333 // 1/2 of roughly 60 Hz.
-#define GFI_PULSE_OFF_US 8334 // 1/2 of roughly 60 Hz.
-#endif
-
-
-#ifdef GFI_TESTING
-#define GFI_TIMEOUT ((unsigned long)(15*1000))
-#define GFI_RETRY_COUNT  255
-#else // !GFI_TESTING
-#define GFI_TIMEOUT ((unsigned long)(5*60000)) // 15*60*1000 doesn't work. go figure
-// number of times to retry tests before giving up. 255 = retry indefinitely
-#define GFI_RETRY_COUNT  6
-#endif // GFI_TESTING
-#endif // GFI
 
 // for RGBLCD
 #define RED 0x1
