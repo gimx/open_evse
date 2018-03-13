@@ -29,10 +29,10 @@ THRESH_DATA g_DefaultThreshData = {875, 780, 690, 0, 260};
 J1772EVSEController g_EvseController;
 
 
-J1772EVSEController::J1772EVSEController() :
-  adcPilot(VOLT_PIN)
+J1772EVSEController::J1772EVSEController() 
+
 #ifdef CURRENT_PIN
-  , adcCurrent(CURRENT_PIN)
+  : adcCurrent(CURRENT_PIN)
 #endif
 #ifdef VOLTMETER_PIN
   , adcVoltMeter(VOLTMETER_PIN)
@@ -520,7 +520,7 @@ void J1772EVSEController::Init()
   m_NoGndStart = 0;
 #endif // ADVPWR
 
-  m_EvseState = EVSE_STATE_UNKNOWN;
+  m_EvseState = EVSE_STATE_A;
   m_PrevEvseState = EVSE_STATE_UNKNOWN;
 
 
@@ -533,27 +533,6 @@ void J1772EVSEController::Init()
 #endif
 
   g_OBD.SetGreenLed(0);
-}
-
-void J1772EVSEController::ReadPilot(uint16_t *plow, uint16_t *phigh, int loopcnt)
-{
-  uint16_t pl = 1023;
-  uint16_t ph = 0;
-
-  // 1x = 114us 20x = 2.3ms 100x = 11.3ms
-  for (int i = 0; i < 100; i++) {
-    uint16_t reading = adcPilot.read();  // measures pilot voltage
-
-    if (reading > ph) {
-      ph = reading;
-    }
-    else if (reading < pl) {
-      pl = reading;
-    }
-  }
-
-  *plow = pl;
-  *phigh = ph;
 }
 
 
@@ -577,7 +556,7 @@ void J1772EVSEController::Update()
   uint8_t tmpevsestate = EVSE_STATE_UNKNOWN;
   int16_t deltap = 0;
 
-  ReadPilot(&plow, &phigh);
+  m_Pilot.ReadPilot(&plow, &phigh);
 
   deltap = phigh - plow;
 
