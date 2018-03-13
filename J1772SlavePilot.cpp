@@ -17,11 +17,10 @@
  * Boston, MA 02111-1307, USA.
  */
 #include "open_evse.h"
-#include "uTimerLib.h"
 #include <EnableInterrupt.h>
 
 volatile uint32_t t0=0,t1=0,t2=0, tLow, tHigh;
-volatile uint16_t uSecPulsewidth = 100; //init to 6A
+volatile uint16_t uSecPulsewidth = 200; //init to 6A
 
 
 void pilotHigh(){
@@ -32,8 +31,6 @@ void pilotHigh(){
 void pilotLow() {
   digitalWrite(PILOT_PIN,LOW);
   pinMode(PILOT_PIN,OUTPUT);
-  //ensure highZ after one period, to be ready to mimic steady states of MASTER  
-  //TimerLib.setTimeout_us(pilotHigh, 350);
 }
 
 void onMasterPilotChange() {
@@ -41,7 +38,6 @@ void onMasterPilotChange() {
   
   if (state == HIGH) { //rising MASTER
     t0=  micros();
-    tLow = t0-t1;
     
     // phase delay to trick MASTER charger electronic checking output signal, i.e. testing whether high after X us, 
     // if the shortened pulse would be low already then, the charger reports a failure 
@@ -50,19 +46,20 @@ void onMasterPilotChange() {
     //rise
     pilotHigh();
     
-    delayMicroseconds(uSecPulsewidth);
-    pilotLow();
-    
     //drive low after set pulse width, to shorten high phase of MASTER_PILOT
-    //TimerLib.setTimeout_us(pilotLow, uSecPulsewidth);
-    
+    delayMicroseconds(uSecPulsewidth);
+    pilotLow(); 
+  
+    tLow = t0-t1;
   } 
   else{//falling MASTER
     t1 = micros();
     tHigh = t1-t0;
-    //slave pulse shall not extend beyond MASTER pulse, i.e. chargers limit 
-    //but beware that the MASTER_SLAVE_PHASE_DELAY_US is in fact shorten it further
-    //pilotLow();
+    
+    //slave pulse shall not extend beyond MASTER pulse, i.e. chargers limit, 
+    //this has to be ensured with the external diodes and the open collector(INPUT_PULLUP) output of pilot 
+    pilotHigh();
+
   }
 }
 
@@ -87,13 +84,13 @@ void J1772SlavePilot::Init()
 
 void J1772SlavePilot::SetState(PILOT_STATE state)
 {
-//   pinMode(PILOT_PIN, INPUT_PULLUP); // do not interfere with master, high Z
+  pilotHigh(); // do not interfere with master, high Z
   
   if (state == PILOT_STATE_P12) {
-//    digitalWrite(PILOT_PIN,HIGH);
+//    pilotHigh();
   }
   else{
-//    digitalWrite(PILOT_PIN,LOW);
+//    pilotLow();
   }
   
   m_State = state;
@@ -174,17 +171,15 @@ int J1772SlavePilot::SenseMaster()
   return amps;  
 }
 
-
-PILOT_STATE J1772SlavePilot::GetState()  { 
-  #if 0
+void J1772SlavePilot::ReadPilot(uint16_t *plow, uint16_t *phigh, int loopcnt)
+{
   uint16_t pl = 1023;
   uint16_t ph = 0;
-  int16_t deltp = 0;
 
   // 1x = 114us 20x = 2.3ms 100x = 11.3ms
-  for (int i=0;i < 100;i++) {
+  for (int i = 0; i < loopcnt; i++) {
     uint16_t reading = adcPilot.read();  // measures pilot voltage
-    
+
     if (reading > ph) {
       ph = reading;
     }
@@ -193,16 +188,29 @@ PILOT_STATE J1772SlavePilot::GetState()  {
     }
   }
 
+  *plow = pl;
+  *phigh = ph;
+}
+
+
+PILOT_STATE J1772SlavePilot::GetState()  { 
+  PILOT_STATE state = PILOT_STATE_PWM;
+  uint16_t pl = 1023;
+  uint16_t ph = 0;
+  int16_t deltap = 0;
+
+  ReadPilot(&pl, &ph);
+
   deltap = ph-pl;
  
   if (deltap<10){ //pilot steady 
     if (ph >= 500){
-      mState = PILOT_STATE_P12;
+      state = PILOT_STATE_P12;
     }
     if (pl < 500){
-      mState = PILOT_STATE_N12;
+      state = PILOT_STATE_N12;
     }
   }
-  #endif
-  return m_State; 
+
+  return state; 
 }
