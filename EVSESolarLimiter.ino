@@ -94,7 +94,8 @@ void onS0Pulse(){
   g_WattSeconds =  pulseCount*3600;  // accumulate Watt Seconds for charging (scaled for 1000imp/kWh = 1 imp/Wh = 3600imp/Ws)
 
   //calculate current from time between pulses (assumption 1000imp/kWh)
-  g_EvseController.SetChargingCurrent(3600000/((now-pulsetime)*VOLTS_FOR_L2)); //adjust your average grid voltage here, this is good enough for current display, energy is measured directly anyway 
+  //adjust your average grid voltage using scale factor, this is good enough for current display, energy is measured directly anyway 
+  g_EvseController.SetChargingCurrent(3600000/((now-pulsetime))); 
   pulsetime=now;
 }
 
@@ -168,8 +169,8 @@ void DelayTimer::CheckTime()
              ( (currTimeMinutes <= startTimerMinutes) && (currTimeMinutes < stopTimerMinutes) ) ){
     // Within time interval
           if (g_EvseController.GetState() == EVSE_STATE_SLEEPING) {
-      g_EvseController.Enable();
-    }
+            g_EvseController.Enable();
+          }
   }
   else {
     // S.Low 3/12/14 Added check at T+1 minute in case interrupt is late
