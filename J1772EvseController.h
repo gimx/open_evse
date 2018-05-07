@@ -298,7 +298,8 @@ public:
 #ifdef AMMETER
   int32_t GetChargingCurrent() { return m_ChargingCurrent; }
   void SetChargingCurrent(int32_t current) { 
-    m_ChargingCurrent=current; 
+    //adjust your average grid voltage using scale factor, this is good enough for current display, energy is measured directly anyway 
+    m_ChargingCurrent=current*m_CurrentScaleFactor; 
   }
   int16_t GetAmmeterCurrentOffset() { return m_AmmeterCurrentOffset; }
   int16_t GetCurrentScaleFactor() { return m_CurrentScaleFactor; }
@@ -338,6 +339,12 @@ public:
   uint8_t GetNoGndTripCnt() { return m_NoGndTripCnt+1; }
   uint8_t GetStuckRelayTripCnt() { return m_StuckRelayTripCnt+1; }
 #endif // ADVPWR
+
+  // EvConnected value valid when pilot state not N12
+  uint8_t EvConnected(uint16_t phigh) {  
+    if (phigh >= m_ThreshData.m_ThreshAB) return true;
+    else return false;  
+  }
 };
 
 #ifdef FT_ENDURANCE
