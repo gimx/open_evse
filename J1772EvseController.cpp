@@ -552,11 +552,54 @@ void J1772EVSEController::Update()
 
   unsigned long curms = millis();
 
+  m_Pilot.ReadPilot(&plow,&phigh); // always read so we can update EV connect state, too
+  
+  if (m_EvseState == EVSE_STATE_DISABLED) {
+    m_PrevEvseState = m_EvseState; // cancel state transition
+    return;
+  }
+  else if (m_EvseState == EVSE_STATE_SLEEPING) {
+    int8_t cancelTransition = 1;
+    if (chargingIsOn()) {
+      // wait for pilot voltage to go > STATE C. This will happen if
+      // a) EV reacts and goes back to state B (opens its contacts)
+      // b) user pulls out the charge connector
+      // if it doesn't happen within 3 sec, we'll just open our relay anyway
+      // c) no current draw means EV opened its contacts even if it stays in STATE C
+      //    allow 3A slop for ammeter inaccuracy
+      if ((phigh >= m_ThreshData.m_ThreshBC)
+#ifdef AMMETER
+    || (m_AmmeterReading <= 3000)
+#endif // AMMETER
+    || ((curms - m_ChargeOffTimeMS) >= 3000)) {
+  chargingOff();
+#ifdef FT_SLEEP_DELAY
+  sprintf(g_sTmp,"SLEEP OPEN %d",(int)phigh);
+  g_OBD.LcdMsg(g_sTmp,(phigh >= m_ThreshData.m_ThreshBC) ? "THRESH" : "TIMEOUT");
+  delay(2000);
+#endif
+      }
+    }
+#if defined(TIME_LIMIT) || defined(CHARGE_LIMIT)
+    else if (LimitSleepIsSet()) {
+      if (!EvConnected(phigh)) {
+  // if we went into sleep due to time/charge limit met, then
+  // automatically cancel the sleep when the car is unplugged
+      cancelTransition = 0;
+      SetLimitSleep(0);
+      m_EvseState = EVSE_STATE_UNKNOWN;
+      }
+    }
+#endif //defined(TIME_LIMIT) || defined(CHARGE_LIMIT)
+  if (cancelTransition) {
+      m_PrevEvseState = m_EvseState; // cancel state transition
+      return;
+    }
+  }
+    
   uint8_t prevevsestate = m_EvseState;
   uint8_t tmpevsestate = EVSE_STATE_UNKNOWN;
   int16_t deltap = 0;
-
-  m_Pilot.ReadPilot(&plow, &phigh);
 
   deltap = phigh - plow;
 
