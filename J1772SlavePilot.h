@@ -36,5 +36,5 @@ public:
   PILOT_STATE GetState();
   int SetPWM(int amps); // 12V 1KHz PWM
   int SenseMaster(); 
-  void ReadPilot(uint16_t *plow,uint16_t *phigh,int loopcnt=PILOT_LOOP_CNT);
+  void ReadPilot(uint16_t *plow=NULL,uint16_t *phigh=NULL);
 };
