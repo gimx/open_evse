@@ -171,13 +171,13 @@ int J1772SlavePilot::SenseMaster()
   return amps;  
 }
 
-void J1772SlavePilot::ReadPilot(uint16_t *plow, uint16_t *phigh, int loopcnt)
+void J1772SlavePilot::ReadPilot(uint16_t *plow, uint16_t *phigh)
 {
   uint16_t pl = 1023;
   uint16_t ph = 0;
 
   // 1x = 114us 20x = 2.3ms 100x = 11.3ms
-  for (int i = 0; i < loopcnt; i++) {
+  for (int i = 0; i < PILOT_LOOP_CNT; i++) {
     uint16_t reading = adcPilot.read();  // measures pilot voltage
 
     if (reading > ph) {
@@ -186,10 +186,12 @@ void J1772SlavePilot::ReadPilot(uint16_t *plow, uint16_t *phigh, int loopcnt)
     else if (reading < pl) {
       pl = reading;
     }
+  } 
+  
+  if (plow!=NULL && phigh!=NULL) {
+    *plow = pl;
+    *phigh = ph;
   }
-
-  *plow = pl;
-  *phigh = ph;
 }
 
 
@@ -205,11 +207,14 @@ PILOT_STATE J1772SlavePilot::GetState()  {
  
   if (deltap<10){ //pilot steady 
     if (ph >= 500){
-      state = PILOT_STATE_P12;
+      m_State = PILOT_STATE_P12;
+      pilotHigh();
     }
     if (pl < 500){
-      state = PILOT_STATE_N12;
+      m_State = PILOT_STATE_N12;
     }
+  }else{
+    PILOT_STATE_PWM;
   }
 
   return state; 
