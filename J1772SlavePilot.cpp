@@ -22,10 +22,15 @@
 volatile uint32_t t0=0,t1=0,t2=0, tLow, tHigh;
 volatile uint16_t uSecPulsewidth = 200; //init to 6A
 
-
 void pilotHigh(){
-  pinMode(PILOT_PIN,INPUT_PULLUP);
-//  digitalWrite(PILOT_PIN,HIGH);
+//  pinMode(PILOT_PIN,INPUT_PULLUP);
+  digitalWrite(PILOT_PIN,HIGH);
+  TCCR2A &= ~(_BV(COM2B0) | _BV(COM2B1));
+}
+
+void pilotPWM(){
+  TCCR2A |= _BV(COM2B0) | _BV(COM2B1);
+  
 }
 
 void pilotLow() {
@@ -33,39 +38,76 @@ void pilotLow() {
   pinMode(PILOT_PIN,OUTPUT);
 }
 
+// one shot pulse generator from https://wp.josh.com/2015/03/05/the-perfect-pulse-some-tricks-for-generating-precise-one-shots-on-avr8/
+#define OSP_SET_WIDTH(cycles) (OCR2B = 0xff-(cycles-1))
+//#define OSP_SET_WIDTH(cycles) (OCR2A = 0xff-(cycles-1))
+
+// Setup the one-shot pulse generator and initialize with a pulse width that is (cycles) clock counts long
+void osp_setup(uint8_t cycles) {
+  TCCR2B =  0;      // Halt counter by setting clock select bits to 0 (No clock source).
+//  TCCR2A =  0;      // Halt counter by setting clock select bits to 0 (No clock source).
+                    // This keeps anyhting from happeneing while we get set up
+
+  TCNT2 = 0x00;     // Start counting at bottom. 
+  OCR2B = 0;      // Set TOP to 0. This effectively keeps us from counting becuase the counter just keeps reseting back to 0.
+          // We break out of this by manually setting the TCNT higher than 0, in which case it will count all the way up to MAX and then overflow back to 0 and get locked up again.
+  OSP_SET_WIDTH(cycles);    // This also makes new OCR values get loaded frm the buffer on every clock cycle. 
+//_BV(COM2B0) |
+  TCCR2A =  _BV(COM2B0) | _BV(COM2B1) | _BV(WGM20) | _BV(WGM21); // OC2B=Set on Match, clear on BOTTOM. Mode 7 Fast PWM.
+  //TCCR2A = _BV(COM2A0) | _BV(COM2A1) | _BV(WGM20) | _BV(WGM21); // OC2B=Set on Match, clear on BOTTOM. Mode 7 Fast PWM.
+  TCCR2B = _BV(WGM22)| _BV(CS22);         // Start counting now. WGM22=1 to select Fast PWM mode 7
+}
+
+
+// Fire a one-shot pulse. Use the most recently set width. 
+#define OSP_FIRE() (TCNT2 = OCR2B - 1)
+//#define OSP_FIRE() (TCNT2 = OCR2A - 1)
+
+// Test there is currently a pulse still in progress
+#define OSP_INPROGRESS() (TCNT2>0)
+
+// Fire a one-shot pulse with the specified width. 
+// Order of operations in calculating m must avoid overflow of the unint8_t.
+// TCNT2 starts one count lower than the match value because the chip will block any compare on the cycle after setting a TCNT. 
+#define OSP_SET_AND_FIRE(cycles) {uint8_t m=0xff-(cycles-1); OCR2B=m; TCNT2=m-1;}
+//#define OSP_SET_AND_FIRE(cycles) {uint8_t m=0xff-(cycles-1); OCR2A=m; TCNT2=m-1;}
+
+
+#define TOP ((F_CPU / 2000000) * 1000) // for 1KHz (=1000us period)
+volatile uint8_t cycles = 10, dutyCycleChanged=true;
+
 void onMasterPilotChange() {
-  int state = digitalRead(MASTER_PILOT_PIN); 
+  int state = digitalRead(MASTER_PILOT_PIN);
   
-  if (state == HIGH) { //rising MASTER
+  if (state == HIGH) { //rising 
+    
+    if (dutyCycleChanged){ 
+      delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
+      OSP_SET_AND_FIRE(cycles);
+      dutyCycleChanged = false;
+    }
+    else{ 
+      delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
+      OSP_FIRE();
+    }
+  
     t0=  micros();
-    
-    // phase delay to trick MASTER charger electronic checking output signal, i.e. testing whether high after X us, 
-    // if the shortened pulse would be low already then, the charger reports a failure 
-    //delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US);
-    
-    //rise
-    pilotHigh();
-    
-    //drive low after set pulse width, to shorten high phase of MASTER_PILOT
-    delayMicroseconds(uSecPulsewidth);
-    pilotLow(); 
-  
     tLow = t0-t1;
   } 
-  else{//falling MASTER
+  else{//falling
     t1 = micros();
     tHigh = t1-t0;
-    
-    //slave pulse shall not extend beyond MASTER pulse, i.e. chargers limit, 
-    //this has to be ensured with the external diodes and the open collector(INPUT_PULLUP) output of pilot 
-    pilotHigh();
-
   }
+
 }
+
 
 void J1772SlavePilot::Init()
 {
   pinMode(MASTER_PILOT_PIN, INPUT_PULLUP);
+
+  pinMode(PILOT_PIN, INPUT_PULLUP);
+  osp_setup(cycles); 
   
   digitalWrite(PILOT_PIN, digitalRead(MASTER_PILOT_PIN));
   pinMode(PILOT_PIN, OUTPUT);
@@ -84,13 +126,16 @@ void J1772SlavePilot::Init()
 
 void J1772SlavePilot::SetState(PILOT_STATE state)
 {
-  pilotHigh(); // do not interfere with master, high Z
+//  pilotHigh(); // do not interfere with master, high Z
   
   if (state == PILOT_STATE_P12) {
-//    pilotHigh();
+    pilotHigh();
+  }
+  else if (state == PILOT_STATE_N12){
+//    pilotLow();
   }
   else{
-//    pilotLow();
+    pilotPWM();  
   }
   
   m_State = state;
@@ -124,7 +169,15 @@ int J1772SlavePilot::SetPWM(int amps)
 #endif  
   if (uSecPulsewidth) {    
     pinMode(PILOT_PIN, OUTPUT);
-    m_State = PILOT_STATE_PWM;
+    digitalWrite(PILOT_PIN, HIGH);
+  
+    AutoCriticalSection asc;
+    
+    // 10% = 24 , 96% = 239
+    cycles = uSecPulsewidth/4;
+    dutyCycleChanged = true;
+    
+    SetState(PILOT_STATE_PWM);
     return 0;
   }
   else { // !duty
@@ -208,13 +261,12 @@ PILOT_STATE J1772SlavePilot::GetState()  {
   if (deltap<10){ //pilot steady 
     if (ph >= 500){
       m_State = PILOT_STATE_P12;
-      pilotHigh();
     }
     if (pl < 500){
       m_State = PILOT_STATE_N12;
     }
   }else{
-    PILOT_STATE_PWM;
+    m_State = PILOT_STATE_PWM;
   }
 
   return state; 
