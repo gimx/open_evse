@@ -30,12 +30,11 @@ void pilotHigh(){
 
 void pilotPWM(){
   TCCR2A |= _BV(COM2B0) | _BV(COM2B1);
-  
 }
 
 void pilotLow() {
-  digitalWrite(PILOT_PIN,LOW);
-  pinMode(PILOT_PIN,OUTPUT);
+//  digitalWrite(PILOT_PIN,LOW);
+//  pinMode(PILOT_PIN,OUTPUT);
 }
 
 // one shot pulse generator from https://wp.josh.com/2015/03/05/the-perfect-pulse-some-tricks-for-generating-precise-one-shots-on-avr8/
@@ -79,8 +78,8 @@ volatile uint8_t cycles = 10, dutyCycleChanged=true;
 void onMasterPilotChange() {
   int state = digitalRead(MASTER_PILOT_PIN);
   
-  if (state == HIGH) { //rising 
-    
+  if (state == HIGH) { //rising    
+	
     if (dutyCycleChanged){ 
       delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
       OSP_SET_AND_FIRE(cycles);
@@ -90,7 +89,7 @@ void onMasterPilotChange() {
       delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
       OSP_FIRE();
     }
-  
+    
     t0=  micros();
     tLow = t0-t1;
   } 
@@ -126,19 +125,22 @@ void J1772SlavePilot::Init()
 
 void J1772SlavePilot::SetState(PILOT_STATE state)
 {
-//  pilotHigh(); // do not interfere with master, high Z
+//  pilotHigh(); // forward master unchanged, high Z
   
-  if (state == PILOT_STATE_P12) {
-    pilotHigh();
-  }
-  else if (state == PILOT_STATE_N12){
+  switch (state) {
+    case PILOT_STATE_P12:
+      pilotHigh();
+      m_State = GetPState();
+    break;
+    case PILOT_STATE_N12:
 //    pilotLow();
-  }
-  else{
-    pilotPWM();  
-  }
-  
-  m_State = state;
+      m_State = GetPState();
+    break;
+    case PILOT_STATE_PWM:
+      pilotPWM();  
+      m_State = PILOT_STATE_PWM;
+    break;
+  }  
 }
 
 
@@ -174,7 +176,7 @@ int J1772SlavePilot::SetPWM(int amps)
     AutoCriticalSection asc;
     
     // 10% = 24 , 96% = 239
-    cycles = uSecPulsewidth/4;
+    cycles = (uSecPulsewidth+5)/4;
     dutyCycleChanged = true;
     
     SetState(PILOT_STATE_PWM);
@@ -201,7 +203,7 @@ int J1772SlavePilot::SenseMaster()
   if(tPeriod<950 || tPeriod>1050){
     //check if the master PWM signal is standard compliant (within measurement tolerances of the Arduino)
   #ifdef SERDBG
-    Serial.print("Pilot PWM outside of 5% tolerance of 1kHz. tP[ms]="); Serial.println(tPeriod);
+    Serial.print("Pilot PWM outside of 5% tolerance of 1kHz. tP,tL,tH[ms]="); Serial.println(tPeriod);Serial.println(tLow);Serial.println(tHigh);
   #endif
     return -1;
   } 
@@ -248,7 +250,7 @@ void J1772SlavePilot::ReadPilot(uint16_t *plow, uint16_t *phigh)
 }
 
 
-PILOT_STATE J1772SlavePilot::GetState()  { 
+PILOT_STATE J1772SlavePilot::GetPState()  { 
   PILOT_STATE state = PILOT_STATE_PWM;
   uint16_t pl = 1023;
   uint16_t ph = 0;
@@ -268,6 +270,6 @@ PILOT_STATE J1772SlavePilot::GetState()  {
   }else{
     m_State = PILOT_STATE_PWM;
   }
-
+ 
   return state; 
 }
