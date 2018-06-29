@@ -608,6 +608,7 @@ void J1772EVSEController::Update()
       tmpevsestate = EVSE_STATE_A;
     }
     if (plow < 500) {
+      m_Pilot.SetState(PILOT_STATE_P12); //do not interfere with master
       tmpevsestate = EVSE_STATE_GFCI_FAULT;
     }
   }
@@ -633,7 +634,7 @@ void J1772EVSEController::Update()
       tmpevsestate = EVSE_STATE_D;
     }
     else {
-      //	      tmpevsestate = EVSE_STATE_C;
+      tmpevsestate = EVSE_STATE_C;
     }
   }
   else {
@@ -701,7 +702,7 @@ void J1772EVSEController::Update()
 #ifdef SERDBG
     if (SerDbgEnabled()) {
       Serial.print("state: ");
-      switch (m_Pilot.GetState()) {
+      switch (m_Pilot.GetPState()) {
         case PILOT_STATE_P12: Serial.print("P12"); break;
         case PILOT_STATE_PWM: Serial.print("PWM"); break;
         case PILOT_STATE_N12: Serial.print("N12"); break;
@@ -832,9 +833,7 @@ int J1772EVSEController::SetCurrentCapacity(uint8_t amps, uint8_t updatelcd, uin
     eeprom_write_byte((uint8_t*)((GetCurSvcLevel() == 1) ? EOFS_CURRENT_CAPACITY_L1 : EOFS_CURRENT_CAPACITY_L2), (byte)m_CurrentCapacity);
   }
 
-  if (m_Pilot.GetState() == PILOT_STATE_PWM) {
-    m_Pilot.SetPWM(m_CurrentCapacity);
-  }
+  m_Pilot.SetPWM(m_CurrentCapacity);
 
   if (updatelcd) {
     g_OBD.Update(OBD_UPD_FORCE);
