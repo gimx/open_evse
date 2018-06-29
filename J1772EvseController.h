@@ -208,7 +208,7 @@ public:
     return ((m_EvseState >= EVSE_FAULT_STATE_BEGIN) && (m_EvseState <= EVSE_FAULT_STATE_END));
   }
 
-  void SetHardFault() { m_bVFlags |= ECVF_HARD_FAULT; }
+  void SetHardFault() { } //m_bVFlags |= ECVF_HARD_FAULT; }
   void ClrHardFault() { m_bVFlags &= ~ECVF_HARD_FAULT; }
   int8_t InHardFault() { return (m_bVFlags & ECVF_HARD_FAULT) ? 1 : 0; }
   unsigned long GetResetMs();
@@ -299,7 +299,7 @@ public:
   int32_t GetChargingCurrent() { return m_ChargingCurrent; }
   void SetChargingCurrent(int32_t current) { 
     //adjust your average grid voltage using scale factor, this is good enough for current display, energy is measured directly anyway 
-    m_ChargingCurrent=current*m_CurrentScaleFactor; 
+    m_ChargingCurrent=current*1000/m_CurrentScaleFactor; 
   }
   int16_t GetAmmeterCurrentOffset() { return m_AmmeterCurrentOffset; }
   int16_t GetCurrentScaleFactor() { return m_CurrentScaleFactor; }
