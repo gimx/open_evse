@@ -27,13 +27,15 @@ class J1772SlavePilot {
 #ifndef PAFC_PWM
   DigitalPin pin;
 #endif // !PAFC_PWM
+  
+  
 public:
+  PILOT_STATE GetPState();
   J1772SlavePilot():adcPilot(VOLT_PIN) {
       
   }
   void Init();
   void SetState(PILOT_STATE pstate); // P12/N12
-  PILOT_STATE GetState();
   int SetPWM(int amps); // 12V 1KHz PWM
   int SenseMaster(); 
   void ReadPilot(uint16_t *plow=NULL,uint16_t *phigh=NULL);
