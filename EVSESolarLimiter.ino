@@ -90,9 +90,14 @@ void setup(){
 void onS0Pulse(){
   unsigned long now = millis();
   
-  pulseCount++;      
-  g_WattSeconds =  pulseCount*3600;  // accumulate Watt Seconds for charging (scaled for 1000imp/kWh = 1 imp/Wh = 3600imp/Ws)
-
+  if(g_EvseController.GetState() == EVSE_STATE_C){  //only count energy while charging 
+    pulseCount++;  
+    g_WattSeconds =  pulseCount*3600;  // accumulate Watt Seconds for charging (scaled for 1000imp/kWh = 1 imp/Wh = 3600imp/Ws)
+  }
+  else {
+    pulseCount = 0;
+  }
+  
   //calculate current from time between pulses (assumption 1000imp/kWh)
   //adjust your average grid voltage using scale factor, this is good enough for current display, energy is measured directly anyway 
   g_EvseController.SetChargingCurrent(3600000/((now-pulsetime))); 
