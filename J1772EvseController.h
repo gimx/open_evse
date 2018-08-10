@@ -300,6 +300,7 @@ public:
   void SetChargingCurrent(int32_t current) { 
     //adjust your average grid voltage using scale factor, this is good enough for current display, energy is measured directly anyway 
     m_ChargingCurrent=current*1000/m_CurrentScaleFactor; 
+    m_AmmeterReading = m_ChargingCurrent;
   }
   int16_t GetAmmeterCurrentOffset() { return m_AmmeterCurrentOffset; }
   int16_t GetCurrentScaleFactor() { return m_CurrentScaleFactor; }
