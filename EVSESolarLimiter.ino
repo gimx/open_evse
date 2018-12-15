@@ -70,9 +70,6 @@ void setup(){
   pinMode(S0_PULSE_PIN, INPUT_PULLUP);
   enableInterrupt(S0_PULSE_PIN | PINCHANGEINTERRUPT, onS0Pulse, FALLING);     // Attach pulse counting interrupt pulse counting
 
-  //Enable Digital Communication pin
-  pinMode(DCOM_ENAB_PIN, INPUT_PULLUP);
-
   WDT_ENABLE();
   
 #ifdef KWH_RECORDING

@@ -284,7 +284,6 @@ extern DateTime g_CurrTime;
 
 #define MASTER_PILOT_PIN 2
 #define PILOT_PIN 3
-#define MASTER_SLAVE_PHASE_DELAY_US 5// 155
 
 //S0 pulse counter input pin as energy meter
 #define S0_PULSE_PIN 6

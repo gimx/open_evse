@@ -19,6 +19,8 @@
 #include "open_evse.h"
 #include <EnableInterrupt.h>
 
+#define MASTER_SLAVE_PHASE_DELAY_US 5// 155
+
 volatile uint32_t t0=0,t1=0,t2=0, tLow, tHigh;
 volatile uint16_t uSecPulsewidth = 200; //init to 6A
 
@@ -73,20 +75,20 @@ void osp_setup(uint8_t cycles) {
 
 
 #define TOP ((F_CPU / 2000000) * 1000) // for 1KHz (=1000us period)
-volatile uint8_t cycles = 10, dutyCycleChanged=true;
+volatile uint8_t cycles = 10, dutyCycleChanged=true, tLtoH=117;
 
 void onMasterPilotChange() {
   int state = digitalRead(MASTER_PILOT_PIN);
   
   if (state == HIGH) { //rising    
-	
+	  t0 = max(120 - cycles, 0);
     if (dutyCycleChanged){ 
-      delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
+      delayMicroseconds(tLtoH); // phase delay to trick master charger probing for high on output
       OSP_SET_AND_FIRE(cycles);
       dutyCycleChanged = false;
     }
     else{ 
-      delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
+      delayMicroseconds(tLtoH); // phase delay to trick master charger probing for high on output
       OSP_FIRE();
     }
     
@@ -100,10 +102,24 @@ void onMasterPilotChange() {
 
 }
 
+void onDcomChange() {
+  if (digitalRead(DCOM_ENAB_PIN) == LOW){
+    uSecPulsewidth = 50;
+    dutyCycleChanged = true;
+  }
+  else{
+    uSecPulsewidth = 50;
+    dutyCycleChanged = true;  
+  }
+}
+  
 
 void J1772SlavePilot::Init()
 {
   pinMode(MASTER_PILOT_PIN, INPUT_PULLUP);
+  
+  //Enable Digital Communication pin
+  pinMode(DCOM_ENAB_PIN, INPUT_PULLUP);
 
   pinMode(PILOT_PIN, INPUT_PULLUP);
   osp_setup(cycles); 
@@ -113,6 +129,8 @@ void J1772SlavePilot::Init()
  
   //master pilot sensing
   enableInterrupt(MASTER_PILOT_PIN, onMasterPilotChange, CHANGE);   
+  //digital communication request
+  enableInterrupt(DCOM_ENAB_PIN, onDcomChange, CHANGE);   
 }
 
 
@@ -159,11 +177,6 @@ int J1772SlavePilot::SetPWM(int amps)
   }
   else {
     return 1; // error
-  }
-
-//overwrite setting 5% duty cycle to signal digital communication
-  if (digitalRead(DCOM_ENAB_PIN) == LOW){
-    uSecPulsewidth = 50;
   }
   
 #ifdef SERDBG
