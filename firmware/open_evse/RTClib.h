@@ -1,7 +1,5 @@
 // Code by JeeLabs http://news.jeelabs.org/code/
 // Released to the public domain! Enjoy!
-#ifndef RTCLIB
-#define RTCLIB
 
 // Simple general-purpose date/time class (no TZ / DST / leap second handling!)
 class DateTime {
@@ -47,5 +45,3 @@ public:
 protected:
     static long offset;
 };
-
-#endif
