@@ -17,14 +17,24 @@
  * Boston, MA 02111-1307, USA.
  */
 #include "open_evse.h"
-#include <EnableInterrupt.h>
+#include "J1772SlavePilot.h"
 
-volatile uint32_t t0=0,t1=0,t2=0, tLow, tHigh;
-volatile uint16_t uSecPulsewidth = 200; //init to 6A
+//#define SERDBG
+
+#define LIBCALL_ENABLEINTERRUPT
+#include <EnableInterrupt.h> 
+
+#define MASTER_PILOT_PIN 2
+#define SLAVE_PILOT_PIN 3
+
+//#define DCOM_ENAB_PIN 5
+
+volatile uint32_t t0=0,t1=0,t2=0, tLow=800, tHigh=200;
+volatile uint16_t uSecPulsewidth = 200; //init to 12A
 
 void pilotHigh(){
-//  pinMode(PILOT_PIN,INPUT_PULLUP);
-  digitalWrite(PILOT_PIN,HIGH);
+//  pinMode(SLAVE_PILOT_PIN,INPUT_PULLUP);
+  digitalWrite(SLAVE_PILOT_PIN,HIGH);
   TCCR2A &= ~(_BV(COM2B0) | _BV(COM2B1));
 }
 
@@ -33,8 +43,8 @@ void pilotPWM(){
 }
 
 void pilotLow() {
-//  digitalWrite(PILOT_PIN,LOW);
-//  pinMode(PILOT_PIN,OUTPUT);
+//  digitalWrite(SLAVE_PILOT_PIN,LOW);
+//  pinMode(SLAVE_PILOT_PIN,OUTPUT);
 }
 
 // one shot pulse generator from https://wp.josh.com/2015/03/05/the-perfect-pulse-some-tricks-for-generating-precise-one-shots-on-avr8/
@@ -73,24 +83,29 @@ void osp_setup(uint8_t cycles) {
 
 
 #define TOP ((F_CPU / 2000000) * 1000) // for 1KHz (=1000us period)
-volatile uint8_t cycles = 10, dutyCycleChanged=true;
+volatile uint8_t cycles = 50, dutyCycleChanged=true;
+volatile int16_t tMtoS;
 
 void onMasterPilotChange() {
   int state = digitalRead(MASTER_PILOT_PIN);
   
-  if (state == HIGH) { //rising    
-	
+  if (state == HIGH) { //rising 
+    t0 =  micros();
+    
+    //MEVSE probes at middle of master pulse, adjust slave pulse such that this time is covered
+    //25us is the phase delay caused by the ISR and OSP, cant get better than this
+    tMtoS = max((tHigh>>1) - (cycles<<1), 0) - 25;    
+ 	  
+    delayMicroseconds(tMtoS); // shift the high pulse to a time when master EVSE is probing for high on pilot, to prevent it detecting a low caused by shortened pulse
+
     if (dutyCycleChanged){ 
-      delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
       OSP_SET_AND_FIRE(cycles);
       dutyCycleChanged = false;
     }
     else{ 
-      delayMicroseconds(MASTER_SLAVE_PHASE_DELAY_US); // phase delay to trick polar charger checking
       OSP_FIRE();
     }
     
-    t0=  micros();
     tLow = t0-t1;
   } 
   else{//falling
@@ -100,19 +115,39 @@ void onMasterPilotChange() {
 
 }
 
+#if 0
+void onDcomChange() {
+  if (digitalRead(DCOM_ENAB_PIN) == LOW){
+    uSecPulsewidth = 50;
+    cycles = (uSecPulsewidth+5)/4;
+    dutyCycleChanged = true;
+  }
+  else{
+    uSecPulsewidth = 50;
+    cycles = (uSecPulsewidth+5)/4;
+    dutyCycleChanged = true;  
+  }
+}
+#endif
+  
 
 void J1772SlavePilot::Init()
 {
   pinMode(MASTER_PILOT_PIN, INPUT_PULLUP);
+  
+  //Enable Digital Communication pin
+  //pinMode(DCOM_ENAB_PIN, INPUT_PULLUP);
 
-  pinMode(PILOT_PIN, INPUT_PULLUP);
+  pinMode(SLAVE_PILOT_PIN, INPUT_PULLUP);
   osp_setup(cycles); 
   
-  digitalWrite(PILOT_PIN, digitalRead(MASTER_PILOT_PIN));
-  pinMode(PILOT_PIN, OUTPUT);
+  digitalWrite(SLAVE_PILOT_PIN, HIGH); // do not disturb until first SetPWM() call digitalRead(MASTER_PILOT_PIN));
+  pinMode(SLAVE_PILOT_PIN, OUTPUT);
  
   //master pilot sensing
   enableInterrupt(MASTER_PILOT_PIN, onMasterPilotChange, CHANGE);   
+  //digital communication request
+  //enableInterrupt(DCOM_ENAB_PIN, onDcomChange, CHANGE);   
 }
 
 
@@ -130,11 +165,11 @@ void J1772SlavePilot::SetState(PILOT_STATE state)
   switch (state) {
     case PILOT_STATE_P12:
       pilotHigh();
-      m_State = GetPState();
+      m_State = GetState();
     break;
     case PILOT_STATE_N12:
 //    pilotLow();
-      m_State = GetPState();
+      m_State = GetState();
     break;
     case PILOT_STATE_PWM:
       pilotPWM();  
@@ -160,18 +195,13 @@ int J1772SlavePilot::SetPWM(int amps)
   else {
     return 1; // error
   }
-
-//overwrite setting 5% duty cycle to signal digital communication
-  if (digitalRead(DCOM_ENAB_PIN) == LOW){
-    uSecPulsewidth = 50;
-  }
   
 #ifdef SERDBG
-  Serial.print(uSecPulsewidth);Serial.print(" usec, i.e. amps:");Serial.println(amps);
+//  Serial.print(uSecPulsewidth);Serial.print(" usec pulsewidth set, i.e. amps:");Serial.println(amps);
 #endif  
   if (uSecPulsewidth) {    
-    pinMode(PILOT_PIN, OUTPUT);
-    digitalWrite(PILOT_PIN, HIGH);
+    pinMode(SLAVE_PILOT_PIN, OUTPUT);
+    digitalWrite(SLAVE_PILOT_PIN, HIGH);
   
     AutoCriticalSection asc;
     
@@ -250,7 +280,7 @@ void J1772SlavePilot::ReadPilot(uint16_t *plow, uint16_t *phigh)
 }
 
 
-PILOT_STATE J1772SlavePilot::GetPState()  { 
+PILOT_STATE J1772SlavePilot::GetState()  { 
   PILOT_STATE state = PILOT_STATE_PWM;
   uint16_t pl = 1023;
   uint16_t ph = 0;
