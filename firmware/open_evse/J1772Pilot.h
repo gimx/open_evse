@@ -23,17 +23,21 @@ typedef enum {
 }
 PILOT_STATE;
 class J1772Pilot {
+protected:
+  AdcPin adcPilot;
   PILOT_STATE m_State;
 #ifndef PAFC_PWM
   DigitalPin pin;
 #endif // !PAFC_PWM
 public:
-  J1772Pilot() {
+  J1772Pilot():adcPilot(PILOT_PIN) {
   }
+  
   void Init();
   void SetState(PILOT_STATE pstate); // P12/N12
   PILOT_STATE GetState() { 
     return m_State; 
   }
   int SetPWM(int amps); // 12V 1KHz PWM
+  void ReadPilot(uint16_t *plow=NULL,uint16_t *phigh=NULL);
 };

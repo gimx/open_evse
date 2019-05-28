@@ -143,3 +143,27 @@ int J1772Pilot::SetPWM(int amps)
   }
 #endif // PAFC_PWM
 }
+
+
+void J1772Pilot::ReadPilot(uint16_t *plow, uint16_t *phigh)
+{
+  uint16_t pl = 1023;
+  uint16_t ph = 0;
+
+  // 1x = 114us 20x = 2.3ms 100x = 11.3ms
+  for (int i = 0; i < PILOT_LOOP_CNT; i++) {
+    uint16_t reading = adcPilot.read();  // measures pilot voltage
+
+    if (reading > ph) {
+      ph = reading;
+    }
+    else if (reading < pl) {
+      pl = reading;
+    }
+  } 
+  
+  if (plow!=NULL && phigh!=NULL) {
+    *plow = pl;
+    *phigh = ph;
+  }
+}

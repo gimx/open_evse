@@ -18,7 +18,6 @@
  * Boston, MA 02111-1307, USA.
  */
 
-
 // EVSE states for m_EvseState
 #define EVSE_STATE_UNKNOWN 0x00
 #define EVSE_STATE_A       0x01 // vehicle state A 12V - not connected
@@ -105,14 +104,14 @@ typedef uint8_t (*EvseStateTransitionReqFunc)(uint8_t prevPilotState,uint8_t cur
 
 
 class J1772EVSEController {
-  J1772Pilot m_Pilot;
+  J1772SlavePilot m_Pilot;
 #ifdef GFI
   Gfi m_Gfi;
   unsigned long m_GfiFaultStartMs;
   unsigned long m_GfiRetryCnt;
   uint8_t m_GfiTripCnt; // contains tripcnt-1
 #endif // GFI
-  AdcPin adcPilot;
+  
 #ifdef CURRENT_PIN
   AdcPin adcCurrent;
 #endif
