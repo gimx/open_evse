@@ -222,7 +222,7 @@ void CLI::getInput()
      println_P(PSTR("WARNING - Do not set higher than 80% of breaker value"));
      printlnn();
      print_P(PSTR("Enter amps ("));
-          Serial.print((g_EvseController.GetCurSvcLevel() == 2) ? MIN_CURRENT_CAPACITY_L2 : MIN_CURRENT_CAPACITY_L1);
+          Serial.print(MIN_CURRENT_CAPACITY_J1772);
      print_P(PSTR("-"));
      Serial.print((g_EvseController.GetCurSvcLevel()  == 1) ? MAX_CURRENT_CAPACITY_L1 : MAX_CURRENT_CAPACITY_L2);
      print_P(PSTR("): "));
