@@ -1,9 +1,5 @@
-// -*- C++ -*-
+#pragma once
 /*
- * Copyright (c) 2015 Sam C. Lin
- *
- * Open EVSE Firmware
- *
  * This file is part of Open EVSE.
 
  * Open EVSE is free software; you can redistribute it and/or modify
@@ -22,25 +18,25 @@
  * Boston, MA 02111-1307, USA.
  */
 
-#ifndef _I2CADDR_H_
-#define _I2CADDR_H_
-//
-// I2C addresses
-//
-// LiquidTWI2
-#define MCP23017_ADDRESS 0x20
-#define MCP23008_ADDRESS 0x20
-
-//RTClib
-#define DS1307_ADDRESS 0x68
-
-// MCP9808
-#define MCP9808_ADDRESS 0x18
-
-
-//RAPI_I2C
-#define RAPI_I2C_LOCAL_ADDR 0x05
-#define RAPI_I2C_REMOTE_ADDR 0x06
-
-
-#endif // _I2CADDR_H_
+typedef enum {
+  PILOT_STATE_P12,PILOT_STATE_PWM,PILOT_STATE_N12} 
+PILOT_STATE;
+class J1772SlavePilot {
+  AdcPin adcPilot;
+  PILOT_STATE m_State;
+#ifndef PAFC_PWM
+  DigitalPin pin;
+#endif // !PAFC_PWM
+  
+  
+public:
+  PILOT_STATE GetPState();
+  J1772SlavePilot():adcPilot(VOLT_PIN) {
+      
+  }
+  void Init();
+  void SetState(PILOT_STATE pstate); // P12/N12
+  int SetPWM(int amps); // 12V 1KHz PWM
+  int SenseMaster(); 
+  void ReadPilot(uint16_t *plow=NULL,uint16_t *phigh=NULL);
+};
