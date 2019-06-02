@@ -16,7 +16,7 @@
 #pragma once
 
 #include <avr/io.h>
-//#include <avr/interrupt.h>
+#include <avr/interrupt.h>
 #if defined(ARDUINO) && (ARDUINO >= 100)
 #include "Arduino.h"
 #else

@@ -45,6 +45,7 @@ extern const char g_psGfiTest[] PROGMEM;
 #endif
 #ifdef TEMPERATURE_MONITORING
 extern const char g_psTempChk[] PROGMEM;
+extern const char g_psHighTemp[] PROGMEM;
 #endif // TEMPERATURE_MONITORING
 #endif // BTN_MENU || SHOW_DISABLED_TEST
 
@@ -102,6 +103,7 @@ extern const char g_psTempOnOff[] PROGMEM;
 extern const char g_psNoGround[] PROGMEM;
 extern const char g_psStuckRelay[] PROGMEM;
 extern const char g_psDisabled[] PROGMEM;
+extern const char g_psResetting[] PROGMEM;
 //extern const char g_psWaiting[] PROGMEM;
 extern const char g_psSleeping[] PROGMEM;
 extern const char g_psEvConnected[] PROGMEM;
@@ -118,3 +120,7 @@ extern const char *g_sMaxCurrentFmt;
 extern const char g_psSetDateTime[] PROGMEM;
 extern const char *g_DelayMenuItems[];
 #endif // DELAYTIMER_MENU
+
+#ifdef OVERCURRENT_THRESHOLD
+extern const char g_psOverCurrent[] PROGMEM;
+#endif // OVERCURRENT_THRESHOLD
