@@ -524,8 +524,10 @@ int EvseRapiProcessor::processCmd()
 	else {
 	  u1.u8 = 0; // nosave = 0
 	}
-#ifdef TEMPERATURE_MONITORING
+
 	u2.u8 = dtou32(tokens[1]);
+  
+#ifdef TEMPERATURE_MONITORING
 	if (g_TempMonitor.OverTemperature() &&
 	    (u2.u8 > g_EvseController.GetCurrentCapacity())) {
 	  // don't allow raising current capacity during

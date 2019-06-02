@@ -17,25 +17,13 @@
  * Free Software Foundation, Inc., 59 Temple Place - Suite 330,
  * Boston, MA 02111-1307, USA.
  */
+#include "J1772Pilot.h"
 
-typedef enum {
-  PILOT_STATE_P12,PILOT_STATE_PWM,PILOT_STATE_N12} 
-PILOT_STATE;
-class J1772SlavePilot {
-  AdcPin adcPilot;
-  PILOT_STATE m_State;
-#ifndef PAFC_PWM
-  DigitalPin pin;
-#endif // !PAFC_PWM
-  
-  
+class J1772SlavePilot:public J1772Pilot{
 public:
-  PILOT_STATE GetPState();
-  J1772SlavePilot():adcPilot(VOLT_PIN) {
-      
-  }
+  PILOT_STATE GetState();
   void Init();
-  void SetState(PILOT_STATE pstate); // P12/N12
+  void SetState(PILOT_STATE pstate); // P12/N12 
   int SetPWM(int amps); // 12V 1KHz PWM
   int SenseMaster(); 
   void ReadPilot(uint16_t *plow=NULL,uint16_t *phigh=NULL);

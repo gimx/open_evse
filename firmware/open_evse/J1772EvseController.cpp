@@ -141,9 +141,9 @@ uint32_t MovingAverage(uint32_t samp)
 #endif // AMMETER
 
 J1772EVSEController::J1772EVSEController() :
-  adcPilot(PILOT_PIN)
+  
 #ifdef CURRENT_PIN
-  , adcCurrent(CURRENT_PIN)
+  adcCurrent(CURRENT_PIN)
 #endif
 #ifdef VOLTMETER_PIN
   , adcVoltMeter(VOLTMETER_PIN)
@@ -331,7 +331,7 @@ void J1772EVSEController::HardFault()
     // if pilot not in N12 state, we can recover from the hard fault when EV
     // is unplugged
     if (m_Pilot.GetState() != PILOT_STATE_N12) {
-      ReadPilot(); // update EV connect state
+      m_Pilot.ReadPilot(); // update EV connect state
       if (!EvConnected()) {
 	// EV disconnected - cancel fault
 	m_EvseState = EVSE_STATE_UNKNOWN;
@@ -1042,39 +1042,6 @@ void J1772EVSEController::Init()
   g_OBD.SetGreenLed(0);
 }
 
-void J1772EVSEController::ReadPilot(uint16_t *plow,uint16_t *phigh)
-{
-  uint16_t pl = 1023;
-  uint16_t ph = 0;
-
-  // 1x = 114us 20x = 2.3ms 100x = 11.3ms
-  for (int i=0;i < PILOT_LOOP_CNT;i++) {
-    uint16_t reading = adcPilot.read();  // measures pilot voltage
-    
-    if (reading > ph) {
-      ph = reading;
-    }
-    else if (reading < pl) {
-      pl = reading;
-    }
-  }
-
-  if (m_Pilot.GetState() != PILOT_STATE_N12) {
-    // update prev state
-    if (EvConnected()) SetEvConnectedPrev();
-    else ClrEvConnectedPrev();
-
-    // can determine connected state only if not -12VDC
-    if (ph >= m_ThreshData.m_ThreshAB) ClrEvConnected();
-    else SetEvConnected();
-  }
-
-  if (plow) {
-    *plow = pl;
-    *phigh = ph;
-  }
-}
-
 
 //TABLE A1 - PILOT LINE VOLTAGE RANGES (recommended.. adjust as necessary
 //                           Minimum Nominal Maximum 
@@ -1095,7 +1062,7 @@ void J1772EVSEController::Update(uint8_t forcetransition)
     return;
   }
   else if (m_EvseState == EVSE_STATE_SLEEPING) {
-    ReadPilot(&plow,&phigh); // always read so we can update EV connect state, too
+    m_Pilot.ReadPilot(&plow,&phigh); // always read so we can update EV connect state, too
 
     int8_t cancelTransition = 1;
     if (chargingIsOn()) {
@@ -1189,7 +1156,7 @@ void J1772EVSEController::Update(uint8_t forcetransition)
     if (prevevsestate == EVSE_STATE_NO_GROUND) {
       // check to see if EV disconnected
       if (phigh == 0xffff) {
-	ReadPilot();
+	      m_Pilot.ReadPilot();
       }
       if (!EvConnected()) {
 	// EV disconnected - cancel fault
@@ -1246,7 +1213,7 @@ void J1772EVSEController::Update(uint8_t forcetransition)
     }
     else { // was already in GFI fault
       // check to see if EV disconnected
-      ReadPilot();  // update EV connect state
+      m_Pilot.ReadPilot();  // update EV connect state
       if (!EvConnected()) {
 	// EV disconnected - cancel fault
 	m_EvseState = EVSE_STATE_UNKNOWN;
@@ -1301,7 +1268,7 @@ if (TempChkEnabled()) {
       m_EvseState = EVSE_STATE_UNKNOWN;
     }
 
-    ReadPilot(&plow,&phigh);
+    m_Pilot.ReadPilot(&plow,&phigh);
 
     if (DiodeCheckEnabled() && (m_Pilot.GetState() == PILOT_STATE_PWM) && (plow >= m_ThreshData.m_ThreshDS)) {
       // diode check failed

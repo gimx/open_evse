@@ -51,13 +51,14 @@
 //-- begin features
 
 // auto detect L1/L2
-#define AUTOSVCLEVEL
+//#define AUTOSVCLEVEL
 
 // show disabled tests before POST
-#define SHOW_DISABLED_TESTS
+//#define SHOW_DISABLED_TESTS
 
 // current measurement
 #define AMMETER
+#define FAKE_CHARGING_CURRENT
 
 // Enable three-phase energy calculation
 // Note: three-phase energy will always be calculated even if EV is only using singe-phase. Ony enable if always charging 3-phase EV and aware of this limitation.
@@ -76,7 +77,7 @@
 #define RAPI_SERIAL
 
 // RAPI $FF command
-#define RAPI_FF
+//#define RAPI_FF
 
 #ifdef RAPI_FF
 // force on RAPI_SEQUENCE_ID and RAPI_RESPONSE_CHK when RAPI_FF on
@@ -84,14 +85,14 @@
 #define RAPI_SEQUENCE_ID
 
 // add checksum to RAPI responses RAPI v2.0.0+
-#define RAPI_RESPONSE_CHK
+//#define RAPI_RESPONSE_CHK
 #endif // RAPI_FF
 
 // RAPI over I2C
 //#define RAPI_I2C
 
 // enable sending of RAPI commands
-//#define RAPI_SENDER
+// #define RAPI_SENDER
 
 // serial port command line
 // For the RTC version, only CLI or LCD can be defined at one time.
@@ -142,18 +143,18 @@ extern AutoCurrentCapacityController g_ACCController;
 #endif // OPENEVSE_2
 
 // GFI support
-#define GFI
+//#define GFI
 
 // If you loop a wire from the third GFI pin through the CT a few times and then to ground,
 // enable this. ADVPWR must also be defined.
-#define GFI_SELFTEST
+//#define GFI_SELFTEST
 
 // behavior specified by UL
 // 1) if enabled, POST failure will cause a hard fault until power cycled.
 //    disabled, will retry POST continuously until it passes
 // 2) if enabled, any a fault occurs immediately after charge is initiated,
 //    hard fault until power cycled. Otherwise, do the standard delay/retry sequence
-#define UL_COMPLIANT
+//#define UL_COMPLIANT
 
 #ifdef UL_COMPLIANT
 #define ADVPWR
@@ -163,7 +164,7 @@ extern AutoCurrentCapacityController g_ACCController;
 #define GFI_SELFTEST
 #endif //UL_COMPLIANT
 
-#define TEMPERATURE_MONITORING  // Temperature monitoring support
+//#define TEMPERATURE_MONITORING  // Temperature monitoring support
 // not yet #define TEMPERATURE_MONITORING_NY
 
 #ifdef AMMETER
@@ -196,7 +197,7 @@ extern AutoCurrentCapacityController g_ACCController;
 #endif //AMMETER
 
 //Adafruit RGBLCD (MCP23017) - can have RGB or monochrome backlight
-#define RGBLCD
+//#define RGBLCD
 
 //select default LCD backlight mode. can be overridden w/CLI/RAPI
 #define BKL_TYPE_MONO 0
@@ -205,28 +206,28 @@ extern AutoCurrentCapacityController g_ACCController;
 //#define DEFAULT_LCD_BKL_TYPE BKL_TYPE_MONO
 
 // Adafruit LCD backpack in I2C mode (MCP23008)
-//#define I2CLCD
+#define I2CLCD
 // Support PCF8574* based I2C backpack using F. Malpartida's library
 // https://bitbucket.org/fmalpartida/new-liquidcrystal/downloads
-//#define I2CLCD_PCF8574
+#define I2CLCD_PCF8574
 
 // Advanced Powersupply... Ground check, stuck relay, L1/L2 detection.
-#define ADVPWR
+//#define ADVPWR
 
 // valid only if ADVPWR defined - for rectified MID400 chips which block
 // half cycle (for ground check on both legs)
-#define SAMPLE_ACPINS
+//#define SAMPLE_ACPINS
 // single button menus (needs LCD enabled)
 // connect an SPST-NO button between BTN_PIN and GND or enable ADAFRUIT_BTN to use the
 // select button of the Adafruit RGB LCD
 // How to use 1-button menu
 // Long press activates menu
 // When within menus, short press cycles menu items, long press selects and exits current submenu
-#define BTN_MENU
+//#define BTN_MENU
 
 // When not in menus, short press instantly stops the EVSE - another short press resumes.  Long press activates menus
 // also allows menus to be manipulated even when in State B/C
-#define BTN_ENABLE_TOGGLE
+//#define BTN_ENABLE_TOGGLE
 
 #ifdef BTN_MENU
 // use Adafruit RGB LCD select button
@@ -262,12 +263,12 @@ extern AutoCurrentCapacityController g_ACCController;
 //(insn 884 881 887 135 (set (mem:QI (post_dec:HI (reg/f:HI 32 __SP_L__)) [0  S1// A8])
 //
 ////        (subreg:QI (reg/f:HI 1065) 1)) C:\Users\Geek\AppData\Local\Temp\arduino_build_853681\sketch\rapi_proc.cpp:418 1 {pushqi1}
-#define GPPBUGKLUDGE
+//#define GPPBUGKLUDGE
 #endif // RTC
 
 // if defined, this pin goes HIGH when the EVSE is sleeping, and LOW otherwise
-//#define SLEEP_STATUS_REG &PINB
-//#define SLEEP_STATUS_IDX 4
+#define SLEEP_STATUS_REG &PINB
+#define SLEEP_STATUS_IDX 5
 
 #ifdef AUTH_LOCK
 // AUTH_LOCK_REG/IDX - use an input pin to control AUTH_LOCK instead of
@@ -420,13 +421,13 @@ extern AutoCurrentCapacityController g_ACCController;
 
 // maximum allowable current in amps
 #define MAX_CURRENT_CAPACITY_L1 16 // J1772 Max for L1 on a 20A circuit = 16, 15A circuit = 12
-#define MAX_CURRENT_CAPACITY_L2 80 // J1772 Max for L2 = 80
+#define MAX_CURRENT_CAPACITY_L2 32 // J1772 Max for L2 = 80
 
 //J1772EVSEController
 
 #define CURRENT_PIN 0 // analog current reading pin ADCx
 #define PILOT_PIN 1 // analog pilot voltage reading pin ADCx
-#define PP_PIN 2 // PP_READ - ADC2
+// #define PP_PIN 2 // PP_READ - ADC2
 #ifdef VOLTMETER
 // N.B. Note, ADC2 is already used as PP_PIN so beware of potential clashes
 // voltmeter pin is ADC2 on OPENEVSE_2
@@ -453,14 +454,14 @@ extern AutoCurrentCapacityController g_ACCController;
 
 #ifndef RELAY_AUTO_PWM_PIN
 // digital Relay trigger pin
-#define CHARGING_REG &PINB
-#define CHARGING_IDX 0
+//#define CHARGING_REG &PINB
+//#define CHARGING_IDX 0
 // digital Relay trigger pin for second relay
-#define CHARGING2_REG &PIND
-#define CHARGING2_IDX 7
+//#define CHARGING2_REG &PIND
+//#define CHARGING2_IDX 7
 //digital Charging pin for AC relay
-#define CHARGINGAC_REG &PINB
-#define CHARGINGAC_IDX 1
+//#define CHARGINGAC_REG &PINB
+//#define CHARGINGAC_IDX 1
 #endif // !RELAY_AUTO_PWM_PIN
 
 // obsolete LED pin
@@ -991,7 +992,7 @@ public:
 };
 #endif // TEMPERATURE_MONITORING
 
-#include "J1772Pilot.h"
+#include "J1772SlavePilot.h"
 #include "J1772EvseController.h"
 
 #ifdef BTN_MENU
@@ -1390,4 +1391,3 @@ void wdt_delay(uint32_t ms);
 
 #include "strings.h"
 #include "rapi_proc.h"
-
